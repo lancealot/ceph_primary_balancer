@@ -1,7 +1,8 @@
 # Ceph Primary Balancer - Next Steps
 
-**Date:** 2026-02-03  
-**Current Status:** Phase 3 Complete (85%)  
+**Date:** 2026-02-03
+**Current Version:** v0.5.0
+**Current Status:** Phase 4 Sprint 1 - 50% Complete (90% Overall)
 **Target:** Phase 4 Complete → v1.0.0 Release (100%)
 
 ---
@@ -31,11 +32,13 @@
 
 ### 🎯 What's Remaining: Phase 4
 
-**Critical for Production (Priority 1):**
-- `--max-changes` to limit swap count
-- Health checks in generated scripts
-- Rollback script generation
-- Batch execution support
+**Recently Completed in v0.5.0 (Phase 4 Sprint 1):**
+- ✅ `--max-changes` to limit swap count (Task 1.1)
+- ✅ Health checks in generated scripts (Task 1.2)
+
+**Still Needed (Priority 1):**
+- ⏳ Rollback script generation (Task 1.3)
+- ⏳ Batch execution support (Task 1.4)
 - Comprehensive unit tests
 
 **Usability Enhancements (Priority 2):**

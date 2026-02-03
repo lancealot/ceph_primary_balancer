@@ -1,8 +1,8 @@
 # Phase 4: Implementation Task List
 
-**Version:** 0.4.0 → 1.0.0  
-**Date:** 2026-02-03  
-**Status:** Ready for Implementation
+**Version:** 0.4.0 → 1.0.0
+**Date:** 2026-02-03
+**Status:** IN PROGRESS - Sprint 1: 50% Complete (Tasks 1.1-1.2 ✅)
 
 This document provides an actionable, prioritized task list for completing Phase 4.
 
@@ -10,20 +10,24 @@ This document provides an actionable, prioritized task list for completing Phase
 
 ## Quick Summary
 
-**What's Done:** ✅ Phases 1-3 Complete (85%)
+**What's Done:** ✅ Phases 1-3 Complete + Phase 4 Sprint 1 Partial (90%)
 - Multi-dimensional balancing (OSD, Host, Pool)
 - JSON export and markdown reporting
 - Enhanced terminal output
 - Integration tests passing
+- ✅ **NEW v0.5.0:** --max-changes CLI option (Task 1.1)
+- ✅ **NEW v0.5.0:** Cluster health checks in scripts (Task 1.2)
 
-**What's Left:** Phase 4 Implementation (15%)
-- Production safety features
+**What's Left:** Phase 4 Implementation (10%)
+- ⏳ Rollback script generation (Task 1.3)
+- ⏳ Batch execution support (Task 1.4)
 - Configuration file support
 - Advanced CLI options
 - Comprehensive unit tests
 - Documentation updates
 
 **Effort:** ~880 lines of code + ~400 lines of docs = 4 weeks
+**Progress:** Sprint 1: 50% complete (2 of 4 tasks) | Overall: 42 lines implemented
 
 ---
 
@@ -31,10 +35,12 @@ This document provides an actionable, prioritized task list for completing Phase
 
 These are essential for production use and should be implemented first.
 
-### Task 1.1: Implement `--max-changes` Option
-**File:** [`src/ceph_primary_balancer/cli.py`](../src/ceph_primary_balancer/cli.py)  
-**Effort:** 20 lines  
+### Task 1.1: Implement `--max-changes` Option ✅ COMPLETE
+**File:** [`src/ceph_primary_balancer/cli.py`](../src/ceph_primary_balancer/cli.py)
+**Effort:** 20 lines → **Actual:** 30 lines
 **Priority:** HIGH
+**Status:** ✅ **COMPLETED in v0.5.0**
+**Summary:** [`plans/task-1.1-IMPLEMENTATION-SUMMARY.md`](task-1.1-IMPLEMENTATION-SUMMARY.md)
 
 Add CLI argument to limit number of swaps:
 ```python
@@ -55,10 +61,12 @@ if args.max_changes and len(swaps) > args.max_changes:
 
 ---
 
-### Task 1.2: Add Health Checks to Script Generation
-**File:** [`src/ceph_primary_balancer/script_generator.py`](../src/ceph_primary_balancer/script_generator.py)  
-**Effort:** 40 lines  
+### Task 1.2: Add Health Checks to Script Generation ✅ COMPLETE
+**File:** [`src/ceph_primary_balancer/script_generator.py`](../src/ceph_primary_balancer/script_generator.py)
+**Effort:** 40 lines → **Actual:** 12 lines
 **Priority:** HIGH
+**Status:** ✅ **COMPLETED in v0.5.0**
+**Summary:** [`plans/task-1.2-IMPLEMENTATION-SUMMARY.md`](task-1.2-IMPLEMENTATION-SUMMARY.md)
 
 Add cluster health verification before executing commands:
 ```bash
