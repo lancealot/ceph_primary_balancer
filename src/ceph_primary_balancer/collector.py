@@ -8,16 +8,17 @@ and populates data models with PG and OSD information.
 Functions:
     run_ceph_command: Execute Ceph CLI commands and parse JSON output
     collect_pg_data: Fetch all placement group information
-    collect_osd_data: Collect OSD metadata from the cluster
-    build_cluster_state: Combine PG and OSD data into a complete ClusterState
+    collect_osd_data: Collect OSD metadata and host topology from the cluster
+    collect_pool_data: Fetch pool information and metadata from the cluster (Phase 2)
+    build_cluster_state: Combine PG, OSD, host, and pool data into a complete ClusterState
 """
 
 import subprocess
 import json
 import sys
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
-from .models import PGInfo, OSDInfo, ClusterState
+from .models import PGInfo, OSDInfo, HostInfo, PoolInfo, ClusterState
 
 
 def run_ceph_command(cmd: List[str]) -> dict:
@@ -99,15 +100,21 @@ def collect_pg_data() -> Dict[str, PGInfo]:
     return pgs
 
 
-def collect_osd_data() -> Dict[int, OSDInfo]:
+def collect_osd_data() -> Tuple[Dict[int, OSDInfo], Dict[str, HostInfo]]:
     """
-    Get list of all OSDs in the cluster.
+    Get list of all OSDs and extract host topology from the cluster.
     
-    Executes 'ceph osd tree -f json' and extracts all OSD nodes.
-    Initializes OSDInfo objects with zero counts (will be calculated later).
+    Executes 'ceph osd tree -f json' and extracts:
+    - OSD nodes with their parent host information
+    - Host nodes with their children OSDs
+    
+    Initializes OSDInfo and HostInfo objects with zero counts
+    (will be calculated later in build_cluster_state).
     
     Returns:
-        Dict[int, OSDInfo]: Dictionary mapping osd_id to OSDInfo objects
+        Tuple containing:
+        - Dict[int, OSDInfo]: Dictionary mapping osd_id to OSDInfo objects
+        - Dict[str, HostInfo]: Dictionary mapping hostname to HostInfo objects
     
     Raises:
         SystemExit: Exits with code 1 if no OSDs are found in the cluster
@@ -122,15 +129,48 @@ def collect_osd_data() -> Dict[int, OSDInfo]:
         print("The cluster may be unhealthy or not properly initialized")
         sys.exit(1)
     
+    # Build a map of node_id -> node for parent lookup
+    node_map = {node['id']: node for node in nodes}
+    
+    # First pass: collect hosts
+    hosts = {}
+    for node in nodes:
+        if node.get('type') == 'host':
+            hostname = node['name']
+            hosts[hostname] = HostInfo(
+                hostname=hostname,
+                osd_ids=[],
+                primary_count=0,
+                total_pg_count=0
+            )
+    
+    # Second pass: collect OSDs and link to hosts
     osds = {}
     for node in nodes:
         if node.get('type') == 'osd':
             osd_id = node['id']
+            
+            # Find parent host by traversing up the tree
+            host_name = None
+            current_id = node.get('parent')
+            while current_id is not None and current_id in node_map:
+                parent_node = node_map[current_id]
+                if parent_node.get('type') == 'host':
+                    host_name = parent_node['name']
+                    break
+                current_id = parent_node.get('parent')
+            
+            # Create OSDInfo with host linkage
             osds[osd_id] = OSDInfo(
                 osd_id=osd_id,
+                host=host_name,
                 primary_count=0,
                 total_pg_count=0
             )
+            
+            # Add OSD to host's osd_ids list
+            if host_name and host_name in hosts:
+                hosts[host_name].osd_ids.append(osd_id)
     
     # Validate that we found at least one OSD
     if not osds:
@@ -138,22 +178,57 @@ def collect_osd_data() -> Dict[int, OSDInfo]:
         print("The cluster may not have any OSDs configured")
         sys.exit(1)
     
-    return osds
+    return osds, hosts
+
+
+def collect_pool_data() -> Dict[int, PoolInfo]:
+    """
+    Fetch pool information and metadata from the cluster.
+    
+    Executes 'ceph osd pool ls detail -f json' and extracts:
+    - Pool ID and name
+    - Pool size and configuration
+    
+    Note: PG counts and primary distributions are calculated later in
+    build_cluster_state based on PG data.
+    
+    Returns:
+        Dict[int, PoolInfo]: Dictionary mapping pool_id to PoolInfo objects
+    """
+    cmd = ['ceph', 'osd', 'pool', 'ls', 'detail', '-f', 'json']
+    data = run_ceph_command(cmd)
+    
+    pools = {}
+    for pool_entry in data:
+        pool_id = pool_entry['pool']
+        pool_name = pool_entry['pool_name']
+        
+        # Initialize PoolInfo with empty primary_counts (will be populated later)
+        pools[pool_id] = PoolInfo(
+            pool_id=pool_id,
+            pool_name=pool_name,
+            pg_count=0,  # Will be calculated from PG data
+            primary_counts={}
+        )
+    
+    return pools
 
 
 def build_cluster_state() -> ClusterState:
     """
-    Combine PG and OSD data into a complete ClusterState.
+    Combine PG, OSD, host, and pool data into a complete ClusterState.
     
-    Collects all PG and OSD information, then calculates:
-    - primary_count: Number of PGs where each OSD is primary
-    - total_pg_count: Total number of PGs in each OSD's acting sets
+    Collects all PG, OSD, host topology, and pool information, then calculates:
+    - OSD-level: primary_count and total_pg_count for each OSD
+    - Host-level: Aggregated primary_count and total_pg_count for each host
+    - Pool-level: Per-pool primary distribution across OSDs (Phase 2)
     
     Returns:
-        ClusterState: Complete cluster state with populated counts
+        ClusterState: Complete cluster state with populated counts at all levels
     """
     pgs = collect_pg_data()
-    osds = collect_osd_data()
+    osds, hosts = collect_osd_data()
+    pools = collect_pool_data()
     
     # Calculate primary_count and total_pg_count for each OSD
     for pg_info in pgs.values():
@@ -166,5 +241,22 @@ def build_cluster_state() -> ClusterState:
         for osd_id in pg_info.acting:
             if osd_id in osds:
                 osds[osd_id].total_pg_count += 1
+        
+        # Count per-pool primary assignments (Phase 2)
+        pool_id = pg_info.pool_id
+        if pool_id in pools:
+            # Increment PG count for this pool
+            pools[pool_id].pg_count += 1
+            
+            # Track primary count per OSD for this pool
+            if primary_osd not in pools[pool_id].primary_counts:
+                pools[pool_id].primary_counts[primary_osd] = 0
+            pools[pool_id].primary_counts[primary_osd] += 1
     
-    return ClusterState(pgs=pgs, osds=osds)
+    # Aggregate counts at host level
+    for osd_info in osds.values():
+        if osd_info.host and osd_info.host in hosts:
+            hosts[osd_info.host].primary_count += osd_info.primary_count
+            hosts[osd_info.host].total_pg_count += osd_info.total_pg_count
+    
+    return ClusterState(pgs=pgs, osds=osds, hosts=hosts, pools=pools)

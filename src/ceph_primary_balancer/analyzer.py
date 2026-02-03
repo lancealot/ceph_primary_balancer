@@ -9,7 +9,7 @@ and generate human-readable summary reports.
 import statistics
 from typing import List, Dict
 
-from .models import OSDInfo, ClusterState, Statistics
+from .models import OSDInfo, PoolInfo, ClusterState, Statistics
 
 
 def calculate_statistics(counts: List[int]) -> Statistics:
@@ -115,6 +115,85 @@ def identify_receivers(osds: Dict[int, OSDInfo], threshold_pct: float = 0.1) -> 
     receivers = [osd_id for osd_id, osd in osds.items() if osd.primary_count < threshold]
     
     return sorted(receivers)
+
+
+def calculate_pool_statistics(pool: PoolInfo, osds: Dict[int, OSDInfo]) -> Statistics:
+    """
+    Calculate statistical metrics for a single pool's primary distribution.
+    
+    Only includes OSDs that have at least one PG from this pool.
+    
+    Args:
+        pool: PoolInfo object containing per-OSD primary counts
+        osds: Dictionary of all OSDs in the cluster (for validation)
+        
+    Returns:
+        Statistics object with pool-level metrics
+        
+    Raises:
+        ValueError: If no OSDs have primaries for this pool
+    """
+    # Get primary counts only for OSDs that have PGs in this pool
+    counts = [count for osd_id, count in pool.primary_counts.items() if osd_id in osds]
+    
+    if not counts:
+        raise ValueError(f"Pool {pool.pool_name} has no primary assignments")
+    
+    return calculate_statistics(counts)
+
+
+def get_pool_statistics_summary(state: ClusterState) -> Dict[int, Statistics]:
+    """
+    Calculate statistics for all pools in the cluster.
+    
+    Args:
+        state: ClusterState containing pools and OSDs
+        
+    Returns:
+        Dictionary mapping pool_id to Statistics object
+    """
+    pool_stats = {}
+    
+    for pool_id, pool in state.pools.items():
+        if pool.primary_counts:  # Only calculate if pool has primaries
+            try:
+                pool_stats[pool_id] = calculate_pool_statistics(pool, state.osds)
+            except ValueError:
+                # Skip pools with no valid primary assignments
+                continue
+    
+    return pool_stats
+
+
+def calculate_average_pool_variance(state: ClusterState) -> float:
+    """
+    Calculate the average variance across all pools.
+    
+    This is used in three-dimensional scoring to measure pool-level balance.
+    
+    Args:
+        state: ClusterState containing pools and OSDs
+        
+    Returns:
+        float: Average variance across all pools (0.0 if no pools)
+    """
+    if not state.pools:
+        return 0.0
+    
+    variances = []
+    for pool in state.pools.values():
+        if pool.primary_counts:
+            try:
+                stats = calculate_pool_statistics(pool, state.osds)
+                variances.append(stats.std_dev ** 2)
+            except ValueError:
+                # Skip pools with no valid assignments
+                continue
+    
+    if not variances:
+        return 0.0
+    
+    return sum(variances) / len(variances)
 
 
 def print_summary(state: ClusterState, stats: Statistics):
