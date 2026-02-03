@@ -59,6 +59,26 @@ class TestIntegration(unittest.TestCase):
             return self.pg_dump_data
         elif 'osd' in cmd and 'tree' in cmd:
             return self.osd_tree_data
+        elif 'osd' in cmd and 'pool' in cmd and 'ls' in cmd:
+            # Mock pool data for Phase 2+ compatibility
+            # Extract pools from pg_dump data
+            pools_seen = set()
+            for pg_stat in self.pg_dump_data.get('pg_map', {}).get('pg_stats', []):
+                pgid = pg_stat['pgid']
+                pool_id = int(pgid.split('.')[0])
+                pools_seen.add(pool_id)
+            
+            # Create mock pool details
+            return [
+                {
+                    "pool_id": pool_id,
+                    "pool_name": f"pool_{pool_id}",
+                    "size": 3,
+                    "min_size": 2,
+                    "pg_num": 30  # Mock value
+                }
+                for pool_id in sorted(pools_seen)
+            ]
         else:
             raise ValueError(f"Unexpected command: {cmd}")
     

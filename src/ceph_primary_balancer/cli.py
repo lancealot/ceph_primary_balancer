@@ -10,8 +10,11 @@ and configurable weights for OSD, host, and pool dimensions.
 
 import argparse
 import sys
+import copy
 from . import collector, analyzer, optimizer, script_generator
 from .scorer import Scorer
+from .exporter import JSONExporter
+from .reporter import Reporter
 
 
 def main():
@@ -70,6 +73,25 @@ def main():
         type=int,
         default=None,
         help='Only optimize PGs from specified pool ID (optional, Phase 2)'
+    )
+    parser.add_argument(
+        '--json-output',
+        type=str,
+        default=None,
+        help='Export analysis results to JSON file (Phase 3)'
+    )
+    parser.add_argument(
+        '--report-output',
+        type=str,
+        default=None,
+        help='Generate markdown analysis report (Phase 3)'
+    )
+    parser.add_argument(
+        '--format',
+        type=str,
+        choices=['terminal', 'json', 'markdown', 'all'],
+        default='terminal',
+        help='Output format: terminal (default), json, markdown, or all (Phase 3)'
     )
     
     args = parser.parse_args()
@@ -176,6 +198,10 @@ def main():
         else:
             print(f"Warning: Pool {args.pool} not found, ignoring filter")
     print()
+    
+    # Store original state for reporting (before optimization modifies it)
+    original_state = copy.deepcopy(state)
+    
     swaps = optimizer.optimize_primaries(state, args.target_cv, scorer=scorer, pool_filter=args.pool)
     
     # Step 5: Handle case where no swaps were found
@@ -229,7 +255,62 @@ def main():
                 print(f"  CV: {pool_stat.cv:.2%}")
                 print(f"  Range: [{pool_stat.min_val}-{pool_stat.max_val}]")
     
-    # Step 7: Generate script or report dry-run
+    # Step 7: Generate JSON export if requested (Phase 3)
+    if args.json_output or args.format in ['json', 'all']:
+        json_path = args.json_output or './analysis.json'
+        print(f"\n" + "="*60)
+        print("EXPORTING JSON ANALYSIS")
+        print("="*60)
+        try:
+            from . import __version__
+            exporter = JSONExporter(tool_version=__version__)
+            exporter.export_to_file(
+                current_state=original_state,
+                proposed_state=state,
+                swaps=swaps,
+                output_path=json_path,
+                cluster_fsid=None,  # Could be extracted from ceph status if needed
+                analysis_type="full"
+            )
+            print(f"JSON analysis exported to: {json_path}")
+        except Exception as e:
+            print(f"Warning: Failed to export JSON: {e}")
+    
+    # Step 8: Generate markdown report if requested (Phase 3)
+    if args.report_output or args.format in ['markdown', 'all']:
+        report_path = args.report_output or './analysis.md'
+        print(f"\n" + "="*60)
+        print("GENERATING MARKDOWN REPORT")
+        print("="*60)
+        try:
+            reporter = Reporter(top_n=10)
+            reporter.generate_markdown_report(
+                current=original_state,
+                proposed=state,
+                swaps=swaps,
+                output_path=report_path
+            )
+            print(f"Markdown report generated: {report_path}")
+        except Exception as e:
+            print(f"Warning: Failed to generate markdown report: {e}")
+    
+    # Step 9: Generate enhanced terminal report if requested (Phase 3)
+    if args.format in ['terminal', 'all']:
+        print(f"\n" + "="*60)
+        print("ENHANCED REPORT")
+        print("="*60)
+        try:
+            reporter = Reporter(top_n=5)
+            report = reporter.generate_terminal_report(
+                current=original_state,
+                proposed=state,
+                swaps=swaps
+            )
+            print(report)
+        except Exception as e:
+            print(f"Warning: Failed to generate enhanced report: {e}")
+    
+    # Step 10: Generate script or report dry-run
     if not args.dry_run:
         script_generator.generate_script(swaps, args.output)
         print(f"\n" + "="*60)
