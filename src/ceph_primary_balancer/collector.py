@@ -129,8 +129,19 @@ def collect_osd_data() -> Tuple[Dict[int, OSDInfo], Dict[str, HostInfo]]:
         print("The cluster may be unhealthy or not properly initialized")
         sys.exit(1)
     
-    # Build a map of node_id -> node for parent lookup
+    # Build a map of node_id -> node for lookups
     node_map = {node['id']: node for node in nodes}
+    
+    # Build parent-child relationship map from children arrays
+    # (some Ceph versions don't have 'parent' field on nodes)
+    osd_to_host = {}
+    for node in nodes:
+        if node.get('type') == 'host':
+            host_name = node['name']
+            # Map all children OSDs to this host
+            for child_id in node.get('children', []):
+                if child_id in node_map and node_map[child_id].get('type') == 'osd':
+                    osd_to_host[child_id] = host_name
     
     # First pass: collect hosts
     hosts = {}
@@ -150,15 +161,19 @@ def collect_osd_data() -> Tuple[Dict[int, OSDInfo], Dict[str, HostInfo]]:
         if node.get('type') == 'osd':
             osd_id = node['id']
             
-            # Find parent host by traversing up the tree
-            host_name = None
-            current_id = node.get('parent')
-            while current_id is not None and current_id in node_map:
-                parent_node = node_map[current_id]
-                if parent_node.get('type') == 'host':
-                    host_name = parent_node['name']
-                    break
-                current_id = parent_node.get('parent')
+            # Get host from our mapping (built from children arrays)
+            # Fall back to parent field traversal if available
+            host_name = osd_to_host.get(osd_id)
+            
+            if not host_name:
+                # Fallback: try parent field if it exists
+                current_id = node.get('parent')
+                while current_id is not None and current_id in node_map:
+                    parent_node = node_map[current_id]
+                    if parent_node.get('type') == 'host':
+                        host_name = parent_node['name']
+                        break
+                    current_id = parent_node.get('parent')
             
             # Create OSDInfo with host linkage
             osds[osd_id] = OSDInfo(
@@ -200,7 +215,8 @@ def collect_pool_data() -> Dict[int, PoolInfo]:
     
     pools = {}
     for pool_entry in data:
-        pool_id = pool_entry['pool']
+        # Handle both 'pool' and 'pool_id' keys for compatibility
+        pool_id = pool_entry.get('pool') or pool_entry.get('pool_id')
         pool_name = pool_entry['pool_name']
         
         # Initialize PoolInfo with empty primary_counts (will be populated later)

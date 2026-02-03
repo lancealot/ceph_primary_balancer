@@ -54,3 +54,13 @@ Thumbs.db
 
 # Generated scripts
 rebalance*.sh
+
+# Production cluster data and test outputs
+tests/fixtures/production_cluster/
+tests/fixtures/*/reports/
+*.json
+*.md
+!README.md
+!CHANGELOG.md
+!docs/*.md
+!plans/*.md
