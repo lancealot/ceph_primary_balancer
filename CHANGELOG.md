@@ -9,6 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.4.0] - 2026-02-03 - Phase 3: Enhanced Reporting and JSON Export
 
+> **📋 See [RELEASE-NOTES-v0.4.0.md](RELEASE-NOTES-v0.4.0.md) for comprehensive release documentation**
+
 ### Added
 - **JSON Export Module**: Comprehensive JSON export with schema versioning
   - New module: `exporter.py` with `JSONExporter` class (~330 lines)

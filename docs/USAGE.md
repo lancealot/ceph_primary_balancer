@@ -3,6 +3,8 @@
 **Tool Version:** v0.4.0
 **Command:** `python3 -m ceph_primary_balancer.cli`
 
+> **📋 New to v0.4.0?** See [RELEASE-NOTES-v0.4.0.md](../RELEASE-NOTES-v0.4.0.md) for what's new in this version.
+
 This guide covers common usage patterns for the Ceph Primary PG Balancer.
 
 ---

@@ -59,7 +59,7 @@ cat ./rebalance.sh
 
 ## 📊 Version History
 
-- **v0.4.0** (Current) - Enhanced reporting with JSON/Markdown export
+- **v0.4.0** (Current) - Enhanced reporting with JSON/Markdown export - [Release Notes](RELEASE-NOTES-v0.4.0.md)
 - **v0.3.0** - Pool-level optimization (3D balancing)
 - **v0.2.0** - Host-level optimization (2D balancing)
 - **v0.1.0** - MVP with OSD-level balancing
