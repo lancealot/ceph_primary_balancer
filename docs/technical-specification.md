@@ -1,8 +1,24 @@
 # Ceph Primary PG Balancer - Technical Specification
 
+> **📋 Implementation Status Note**
+>
+> This document serves as both a **design specification** and **implementation reference**.
+>
+> **Current Implementation:** v0.4.0 (85% complete)
+> - ✅ Features marked with ✅ are **fully implemented**
+> - ⏳ Features marked with ⏳ are **planned for Phase 4 (v1.0.0)**
+> - 📝 Sections without markers describe implemented functionality
+>
+> **Version History:**
+> - v0.1.0 (MVP): OSD-level optimization
+> - v0.2.0 (Phase 1): Host-level optimization added
+> - v0.3.0 (Phase 2): Pool-level optimization added
+> - v0.4.0 (Phase 3): JSON export and markdown reporting added
+> - v1.0.0 (Phase 4): Production features (in progress)
+
 ## Document Purpose
 
-This specification defines a Python tool for analyzing and optimizing primary Placement Group (PG) distribution across a Ceph cluster. The tool will identify hotspots, calculate optimal primary assignments, and generate executable scripts to rebalance the cluster.
+This specification defines a Python tool for analyzing and optimizing primary Placement Group (PG) distribution across a Ceph cluster. The tool identifies hotspots, calculates optimal primary assignments, and generates executable scripts to rebalance the cluster.
 
 ---
 

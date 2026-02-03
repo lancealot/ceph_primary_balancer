@@ -1,4 +1,22 @@
-# Ceph Primary PG Balancer - MVP Usage Guide
+# ⚠️ HISTORICAL DOCUMENT - MVP Usage Guide (v0.1.0)
+
+> **⚠️ WARNING: This document describes the original MVP (v0.1.0) from January 2026.**
+> **Current Version: v0.4.0**
+>
+> **Many features listed as "NOT Included" below have since been implemented:**
+> - ✅ **Host-level optimization** - Implemented in v0.2.0
+> - ✅ **Pool-level optimization** - Implemented in v0.3.0
+> - ✅ **JSON export** - Implemented in v0.4.0
+> - ✅ **Weighted optimization** - Implemented in v0.2.0
+>
+> **For current usage documentation, see:** [`USAGE.md`](USAGE.md)
+> **For current features, see:** [`README.md`](../README.md)
+>
+> This document is kept for historical reference only.
+
+---
+
+# Ceph Primary PG Balancer - MVP Usage Guide (v0.1.0)
 
 ## Introduction
 
@@ -8,9 +26,9 @@ The Ceph Primary PG Balancer MVP is a command-line tool that analyzes and optimi
 
 ---
 
-## MVP Limitations
+## MVP Limitations (v0.1.0 - January 2026)
 
-### ✅ What IS Included in MVP
+### ✅ What WAS Included in MVP (v0.1.0)
 
 - **OSD-level primary balancing** - Optimizes primary distribution across all OSDs
 - **Statistical analysis** - Calculates mean, standard deviation, and coefficient of variation (CV)
@@ -19,14 +37,14 @@ The Ceph Primary PG Balancer MVP is a command-line tool that analyzes and optimi
 - **Safety features** - Confirmation prompts and progress tracking
 - **Smart optimization** - Greedy algorithm that only makes beneficial swaps
 
-### ❌ What is NOT Included (Planned for Future Versions)
+### ❌ What was NOT Included in MVP (Many Now Implemented!)
 
-- **Host-level optimization** - Balancing primaries across physical hosts (v2)
-- **Pool-level optimization** - Per-pool balancing strategies (v2)
-- **JSON export** - Machine-readable output format (v2)
-- **Weighted optimization** - Custom weights for different optimization goals (v2)
-- **Max changes limit** - Hard cap on number of swaps per run (v2)
-- **Package installation** - Currently runs from source only (v2)
+- **Host-level optimization** - Balancing primaries across physical hosts ✅ **IMPLEMENTED in v0.2.0**
+- **Pool-level optimization** - Per-pool balancing strategies ✅ **IMPLEMENTED in v0.3.0**
+- **JSON export** - Machine-readable output format ✅ **IMPLEMENTED in v0.4.0**
+- **Weighted optimization** - Custom weights for different optimization goals ✅ **IMPLEMENTED in v0.2.0**
+- **Max changes limit** - Hard cap on number of swaps per run ⏳ **Planned for v1.0.0**
+- **Package installation** - Currently runs from source only ⏳ **Future release**
 
 **See:** [`plans/mvp-implementation-plan.md`](../plans/mvp-implementation-plan.md) for the complete roadmap.
 

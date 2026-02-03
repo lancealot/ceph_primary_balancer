@@ -27,7 +27,7 @@ mypy src/
 
 ## Adding New Features
 
-1. Update DESIGN.md with specification
+1. Update technical-specification.md with specification
 2. Write tests first
 3. Implement feature
 4. Update USAGE.md
@@ -50,17 +50,27 @@ ceph-primary-pg-balancer/
 ├── requirements-dev.txt
 │
 ├── docs/
-│   ├── DESIGN.md                  # ← Rename your spec to this
+│   ├── technical-specification.md # Complete technical design
 │   ├── INSTALLATION.md
 │   ├── USAGE.md
+│   ├── MVP-USAGE.md               # Historical (v0.1.0)
 │   ├── TROUBLESHOOTING.md
-│   └── DEVELOPMENT.md
+│   ├── DEVELOPMENT.md
+│   ├── PHASE1-SUMMARY.md          # v0.2.0
+│   └── PHASE3-SUMMARY.md          # v0.4.0
 │
 ├── src/
 │   └── ceph_primary_balancer/
 │       ├── __init__.py
-│       ├── main.py
-│       └── ...
+│       ├── cli.py                 # Main entry point
+│       ├── models.py
+│       ├── collector.py
+│       ├── analyzer.py
+│       ├── optimizer.py
+│       ├── scorer.py
+│       ├── script_generator.py
+│       ├── exporter.py            # v0.4.0
+│       └── reporter.py            # v0.4.0
 │
 ├── tests/
 │   ├── fixtures/                  # Sample Ceph JSON outputs
