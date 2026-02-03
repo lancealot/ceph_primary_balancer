@@ -88,6 +88,40 @@ python3 -m ceph_primary_balancer.cli --target-cv 0.15
 # Default is 10%
 ```
 
+### Limit Number of Changes (v1.0.0+)
+
+For production safety, limit the number of primary reassignments:
+
+```bash
+# Apply only 100 changes
+python3 -m ceph_primary_balancer.cli --max-changes 100
+
+# Combine with other options
+python3 -m ceph_primary_balancer.cli --max-changes 50 --pool 3 --dry-run
+```
+
+This is useful for:
+- **Incremental testing**: Apply a small number of changes first to verify behavior
+- **Risk management**: Limit the scope of operations in production
+- **Gradual rebalancing**: Apply changes in batches over time to minimize cluster impact
+
+The tool will:
+1. Find all optimal swaps through full optimization
+2. Select the first N swaps (ordered by benefit, early swaps have higher impact)
+3. Recalculate statistics based on only those N swaps
+4. Generate a script with exactly N commands
+
+**Example output:**
+```
+APPLYING SWAP LIMIT
+============================================================
+Optimization found 247 beneficial swaps
+Limiting to 50 changes (--max-changes=50)
+
+Recalculating proposed state with 50 swaps...
+Proposed state recalculated with 50 swaps
+```
+
 ---
 
 ## Export & Reporting (v0.4.0+)

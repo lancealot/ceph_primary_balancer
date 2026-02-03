@@ -20,6 +20,7 @@ def generate_script(swaps: List[SwapProposal], output_path: str):
     
     The generated script includes:
     - Safety confirmation prompt before execution
+    - Cluster health check (v1.0.0+) - verifies HEALTH_OK or HEALTH_WARN
     - Progress tracking with formatted output
     - Error handling and failure counting
     - Summary of successful and failed operations
@@ -64,6 +65,18 @@ set -e
 echo "This script will execute {total_commands} pg-upmap-primary commands."
 read -p "Continue? [y/N] " confirm
 [[ "$confirm" =~ ^[Yy]$ ]] || exit 1
+
+echo ""
+echo "Checking cluster health..."
+HEALTH=$(ceph health 2>/dev/null)
+if [[ ! "$HEALTH" =~ ^HEALTH_OK ]] && [[ ! "$HEALTH" =~ ^HEALTH_WARN ]]; then
+    echo "ERROR: Cluster health is $HEALTH"
+    echo "Refusing to proceed with unhealthy cluster"
+    read -p "Override and continue anyway? [y/N] " override
+    [[ "$override" =~ ^[Yy]$ ]] || exit 1
+fi
+echo "Cluster health: $HEALTH"
+echo ""
 
 TOTAL={total_commands}
 COUNT=0

@@ -5,7 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
-- Phase 4: Advanced features and production readiness
+- Phase 4 Sprint 2: Rollback scripts, configuration files, batch execution
+
+## [0.5.0] - 2026-02-03 - Phase 4 Sprint 1: Production Safety Features
+
+### Added
+- **CLI Option: --max-changes** (Task 1.1)
+  - Limit number of primary reassignments applied
+  - Accepts integer argument (default: unlimited)
+  - Validates non-negative values
+  - Recalculates proposed state with limited swap set
+  - Shows "found X swaps, limiting to Y" message
+  - Use cases: incremental testing, risk management, gradual rebalancing
+  - Implementation: ~30 lines in `cli.py`
+  - Documentation: Added section to `docs/USAGE.md`
+
+- **Script Safety: Cluster Health Checks** (Task 1.2)
+  - Automatic health verification in generated rebalancing scripts
+  - Checks cluster health before executing commands
+  - Accepts HEALTH_OK and HEALTH_WARN states
+  - Blocks HEALTH_ERR with override option for emergencies
+  - Shows clear error messages with actual health status
+  - Implementation: ~12 lines in `script_generator.py`
+  - Included in all generated scripts automatically
+
+### Changed
+- Enhanced generated scripts with pre-execution health verification
+- Updated `generate_script()` docstring to document health check feature
+
+### Documentation
+- Updated `docs/USAGE.md` with --max-changes examples and use cases
+- Updated `README.md` to mark new features as implemented
+- Created implementation summaries:
+  - `plans/task-1.1-IMPLEMENTATION-SUMMARY.md`
+  - `plans/task-1.1-max-changes-design.md`
+  - `plans/task-1.2-IMPLEMENTATION-SUMMARY.md`
+
+### Testing
+- Python syntax validation passed for all modified files
+- Manual testing verified CLI help text displays correctly
+- Generated script validation confirmed all health check components present
+- Edge cases tested: negative values, zero, large values
+
+### Notes
+- Phase 4 Sprint 1 is 50% complete (2 of 4 tasks done)
+- Remaining Sprint 1 tasks: Rollback scripts (Task 1.3), Batch execution (Task 1.4)
+- On track for v1.0.0 release after completing Phase 4
 
 ## [0.4.0] - 2026-02-03 - Phase 3: Enhanced Reporting and JSON Export
 

@@ -93,6 +93,13 @@ def main():
         default='terminal',
         help='Output format: terminal (default), json, markdown, or all (Phase 3)'
     )
+    parser.add_argument(
+        '--max-changes',
+        type=int,
+        default=None,
+        help='Maximum number of primary reassignments to apply (default: unlimited). '
+             'Useful for testing or limiting cluster impact.'
+    )
     
     args = parser.parse_args()
     
@@ -105,6 +112,11 @@ def main():
     
     if args.weight_osd < 0 or args.weight_host < 0 or args.weight_pool < 0:
         print("Error: Weights must be non-negative")
+        sys.exit(1)
+    
+    # Validate max-changes
+    if args.max_changes is not None and args.max_changes < 0:
+        print("Error: --max-changes must be non-negative")
         sys.exit(1)
     
     # Create scorer with configured weights (Phase 2: three dimensions)
@@ -209,6 +221,28 @@ def main():
         print("\nNo optimization swaps found")
         print("The cluster may already be optimally balanced or no valid swaps exist")
         return
+    
+    # Step 5.5: Apply max-changes limit if specified
+    if args.max_changes is not None and len(swaps) > args.max_changes:
+        print("\n" + "="*60)
+        print("APPLYING SWAP LIMIT")
+        print("="*60)
+        print(f"Optimization found {len(swaps)} beneficial swaps")
+        print(f"Limiting to {args.max_changes} changes (--max-changes={args.max_changes})")
+        print()
+        
+        # Truncate swap list to specified maximum
+        swaps = swaps[:args.max_changes]
+        
+        # Restore state to pre-optimization and re-apply only limited swaps
+        print(f"Recalculating proposed state with {len(swaps)} swaps...")
+        state = copy.deepcopy(original_state)
+        
+        # Re-apply the limited set of swaps
+        for swap in swaps:
+            optimizer.apply_swap(state, swap)
+        
+        print(f"Proposed state recalculated with {len(swaps)} swaps")
     
     # Step 6: Report proposed changes
     print("\n" + "="*60)
