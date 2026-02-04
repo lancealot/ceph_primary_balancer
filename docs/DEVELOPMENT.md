@@ -1,5 +1,7 @@
 # Development Guide
 
+> **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic. All code, architecture, documentation, and tests were AI-generated through iterative collaboration with human guidance.
+
 ## Setup Development Environment
 
 ​```bash

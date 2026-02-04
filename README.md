@@ -5,6 +5,8 @@
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
 
+> **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic. All code, architecture, documentation, and tests were AI-generated through iterative collaboration with human guidance.
+
 ## Why This Tool?
 
 The built-in Ceph upmap balancer optimizes **total** PG distribution but ignores

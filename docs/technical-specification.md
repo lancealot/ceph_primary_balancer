@@ -1,5 +1,7 @@
 # Ceph Primary PG Balancer - Technical Specification
 
+> **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic. All code, architecture, documentation, and tests were AI-generated through iterative collaboration with human guidance.
+
 > **📋 Implementation Status Note**
 >
 > This document serves as both a **design specification** and **implementation reference**.

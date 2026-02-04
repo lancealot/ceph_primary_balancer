@@ -2,7 +2,7 @@
 
 **Version:** 0.4.0 → 1.0.0
 **Date:** 2026-02-03
-**Status:** IN PROGRESS - Sprint 1: 50% Complete (Tasks 1.1-1.2 ✅)
+**Status:** IN PROGRESS - Sprint 1: 75% Complete (Tasks 1.1-1.3 ✅)
 
 This document provides an actionable, prioritized task list for completing Phase 4.
 
@@ -10,16 +10,16 @@ This document provides an actionable, prioritized task list for completing Phase
 
 ## Quick Summary
 
-**What's Done:** ✅ Phases 1-3 Complete + Phase 4 Sprint 1 Partial (90%)
+**What's Done:** ✅ Phases 1-3 Complete + Phase 4 Sprint 1 Partial (75%)
 - Multi-dimensional balancing (OSD, Host, Pool)
 - JSON export and markdown reporting
 - Enhanced terminal output
 - Integration tests passing
 - ✅ **NEW v0.5.0:** --max-changes CLI option (Task 1.1)
 - ✅ **NEW v0.5.0:** Cluster health checks in scripts (Task 1.2)
+- ✅ **NEW v0.6.0:** Rollback script generation (Task 1.3)
 
-**What's Left:** Phase 4 Implementation (10%)
-- ⏳ Rollback script generation (Task 1.3)
+**What's Left:** Phase 4 Implementation (25%)
 - ⏳ Batch execution support (Task 1.4)
 - Configuration file support
 - Advanced CLI options
@@ -27,7 +27,7 @@ This document provides an actionable, prioritized task list for completing Phase
 - Documentation updates
 
 **Effort:** ~880 lines of code + ~400 lines of docs = 4 weeks
-**Progress:** Sprint 1: 50% complete (2 of 4 tasks) | Overall: 42 lines implemented
+**Progress:** Sprint 1: 75% complete (3 of 4 tasks) | Overall: 180 lines implemented
 
 ---
 
@@ -88,34 +88,39 @@ echo ""
 
 ---
 
-### Task 1.3: Generate Rollback Scripts
-**File:** [`src/ceph_primary_balancer/script_generator.py`](../src/ceph_primary_balancer/script_generator.py)  
-**Effort:** 50 lines  
+### Task 1.3: Generate Rollback Scripts ✅ COMPLETE
+**File:** [`src/ceph_primary_balancer/script_generator.py`](../src/ceph_primary_balancer/script_generator.py)
+**Effort:** 50 lines → **Actual:** 138 lines (including comprehensive error handling)
 **Priority:** HIGH
+**Status:** ✅ **COMPLETED in v0.6.0**
+**Summary:** [`plans/task-1.3-IMPLEMENTATION-SUMMARY.md`](task-1.3-IMPLEMENTATION-SUMMARY.md)
 
 Create function to generate rollback script:
 ```python
-def generate_rollback_script(swaps: List[SwapProposal], output_path: str):
+def generate_rollback_script(swaps: List[SwapProposal], output_path: str) -> Optional[str]:
     """Generate script that reverses all proposed changes.
     
     Args:
         swaps: Original swap proposals
         output_path: Path for rollback script (typically *_rollback.sh)
+    
+    Returns:
+        Path to generated rollback script, or None if generation failed
     """
     # Create reverse swaps (swap old and new)
     reverse_swaps = [
         SwapProposal(
-            pgid=s.pgid,
-            old_primary=s.new_primary,  # Reversed
-            new_primary=s.old_primary,   # Reversed
-            score_improvement=0
+            pgid=swap.pgid,
+            old_primary=swap.new_primary,  # Reversed
+            new_primary=swap.old_primary,   # Reversed
+            score_improvement=0.0
         )
-        for s in swaps
+        for swap in swaps
     ]
     
-    # Generate script with reversed swaps
+    # Generate rollback script with comprehensive warnings
     rollback_path = output_path.replace('.sh', '_rollback.sh')
-    generate_script(reverse_swaps, rollback_path)
+    # ... (132 lines of implementation with health checks, warnings, etc.)
     return rollback_path
 ```
 
@@ -123,10 +128,11 @@ Update [`cli.py`](../src/ceph_primary_balancer/cli.py) to call it:
 ```python
 # After generating main script:
 rollback_path = script_generator.generate_rollback_script(swaps, args.output)
-print(f"Rollback script: {rollback_path}")
+if rollback_path:
+    print(f"Rollback script: {rollback_path}")
 ```
 
-**Test:** Verify rollback script reverses all operations
+**Test:** ✅ Verified rollback script reverses all operations (test suite passing)
 
 ---
 

@@ -11,15 +11,17 @@ Version History:
 - v0.3.0: Phase 2 - Pool-level balancing with three-dimensional optimization
 - v0.4.0: Phase 3 - Enhanced reporting and JSON export
 - v0.5.0: Phase 4 Sprint 1 - Production safety features (--max-changes, health checks)
+- v0.6.0: Phase 4 Sprint 1 - Rollback script generation
 
 Phase 4 Sprint 1 Features:
 - CLI option to limit number of changes (--max-changes)
 - Automatic cluster health checks in generated scripts
+- Automatic rollback script generation for safe reversions
 - Swap limiting with state recalculation
 - Production safety enhancements
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 # Package-level imports will be added as modules are implemented
 __all__ = ["__version__"]

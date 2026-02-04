@@ -1,5 +1,7 @@
 # Installation Guide
 
+> **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
+
 ## Prerequisites
 
 - **Python 3.8 or higher**

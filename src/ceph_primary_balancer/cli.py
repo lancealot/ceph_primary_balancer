@@ -347,8 +347,14 @@ def main():
     # Step 10: Generate script or report dry-run
     if not args.dry_run:
         script_generator.generate_script(swaps, args.output)
+        
+        # Generate rollback script
+        rollback_path = script_generator.generate_rollback_script(swaps, args.output)
+        
         print(f"\n" + "="*60)
         print(f"Script written to: {args.output}")
+        if rollback_path:
+            print(f"Rollback script: {rollback_path}")
         print("="*60)
     else:
         print("\n" + "="*60)
