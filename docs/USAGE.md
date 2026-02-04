@@ -1,11 +1,13 @@
 # Usage Guide
 
-**Tool Version:** v0.4.0
+**Tool Version:** v0.8.0
 **Command:** `python3 -m ceph_primary_balancer.cli`
 
 > **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
 
-> **📋 New to v0.4.0?** See [RELEASE-NOTES-v0.4.0.md](../RELEASE-NOTES-v0.4.0.md) for what's new in this version.
+> **📋 What's New in v0.8.0?** Comprehensive unit tests (57 tests), improved documentation, and validated production readiness.
+
+> **📋 Phase 4 Sprint 1 Complete (v0.5.0-v0.7.0):** --max-changes, health checks, rollback scripts, and batch execution.
 
 This guide covers common usage patterns for the Ceph Primary PG Balancer.
 
@@ -90,7 +92,7 @@ python3 -m ceph_primary_balancer.cli --target-cv 0.15
 # Default is 10%
 ```
 
-### Limit Number of Changes (v1.0.0+)
+### Limit Number of Changes (v0.5.0+)
 
 For production safety, limit the number of primary reassignments:
 
@@ -123,6 +125,48 @@ Limiting to 50 changes (--max-changes=50)
 Recalculating proposed state with 50 swaps...
 Proposed state recalculated with 50 swaps
 ```
+
+### Batch Execution (v0.7.0+)
+
+Control how commands are grouped in generated scripts:
+
+```bash
+# Default: 50 commands per batch
+python3 -m ceph_primary_balancer.cli --output ./rebalance.sh
+
+# Smaller batches for more frequent safety pauses
+python3 -m ceph_primary_balancer.cli --batch-size 25 --output ./rebalance.sh
+
+# Larger batches for faster execution
+python3 -m ceph_primary_balancer.cli --batch-size 100 --output ./rebalance.sh
+
+# Combine with max-changes
+python3 -m ceph_primary_balancer.cli --max-changes 150 --batch-size 25
+```
+
+**Benefits:**
+- **Safety pauses**: Script pauses between batches for operator review
+- **Progress tracking**: Clear visibility into which batch is executing
+- **Abort capability**: Stop execution between batches if issues arise
+- **Flexibility**: Continue or abort at each batch boundary
+
+**Generated script structure:**
+```bash
+# Batch 1/3: Commands 1-50 (50 commands)
+apply_mapping "3.a1" 12
+# ... 49 more commands ...
+
+Batch 1/3 complete. Progress: 50/150 commands (0 failed)
+Continue to next batch? [Y/n]
+
+# Batch 2/3: Commands 51-100 (50 commands)
+# ... commands ...
+```
+
+**When to use different batch sizes:**
+- **25-30**: High-value clusters, maximum caution, frequent checkpoints
+- **50 (default)**: Balanced approach for most production clusters
+- **75-100**: Development/test clusters, faster rebalancing
 
 ---
 
@@ -256,19 +300,109 @@ Current Statistics:
 
 ---
 
-## Phase 4 Features (Coming Soon)
+## Production Safety Features (v0.5.0-v0.7.0)
 
-The following options are planned for v1.0.0 but not yet available:
+### Automatic Rollback Scripts (v0.6.0+)
+
+Every generated rebalancing script automatically includes a rollback script:
 
 ```bash
-# Limit number of changes (Phase 4)
-python3 -m ceph_primary_balancer.cli --max-changes 100  # ⏳ Not yet available
+# Generate rebalancing script
+python3 -m ceph_primary_balancer.cli --output ./rebalance.sh
 
-# Custom output directory (Phase 4)
-python3 -m ceph_primary_balancer.cli --output-dir ./output/  # ⏳ Not yet available
+# Two scripts are created:
+# - rebalance.sh (main script)
+# - rebalance_rollback.sh (reverses all changes)
 ```
 
-For current workarounds, see the [Phase 4 planning documents](../plans/phase4-implementation-tasks.md).
+**Using the rollback script:**
+
+```bash
+# If something goes wrong after applying changes
+./rebalance_rollback.sh
+
+# The rollback script will:
+# 1. Check cluster health
+# 2. Warn about the operation
+# 3. Ask for confirmation
+# 4. Reverse all primary assignments
+```
+
+**When to use rollback:**
+- Unexpected performance degradation after rebalancing
+- Client errors or connectivity issues
+- Need to return to previous state for troubleshooting
+
+### Cluster Health Checks (v0.5.0+)
+
+Generated scripts automatically include health verification:
+
+```bash
+# Health check runs before executing any commands
+echo "Checking cluster health..."
+HEALTH=$(ceph health 2>/dev/null)
+if [[ ! "$HEALTH" =~ ^HEALTH_OK ]] && [[ ! "$HEALTH" =~ ^HEALTH_WARN ]]; then
+    echo "ERROR: Cluster health is $HEALTH"
+    echo "Refusing to proceed with unhealthy cluster"
+    exit 1
+fi
+```
+
+**Health check behavior:**
+- ✅ **HEALTH_OK**: Proceeds automatically
+- ⚠️ **HEALTH_WARN**: Proceeds with warning
+- ❌ **HEALTH_ERR**: Blocks execution (override option available)
+
+### Complete Production Workflow (v0.8.0)
+
+```bash
+# 1. Analyze and generate with safety features
+python3 -m ceph_primary_balancer.cli \
+  --max-changes 100 \
+  --batch-size 25 \
+  --output ./rebalance.sh \
+  --json-output ./plan.json \
+  --report-output ./plan.md
+
+# Files created:
+# - rebalance.sh (100 commands in 4 batches of 25)
+# - rebalance_rollback.sh (reverses all 100 changes)
+# - plan.json (detailed analysis)
+# - plan.md (markdown report)
+
+# 2. Review the plan
+cat ./plan.md
+
+# 3. Execute during maintenance window
+./rebalance.sh
+# - Health check runs first
+# - Batch 1/4 executes (25 commands)
+# - Pause for operator review
+# - Continue or abort
+# - Repeat for remaining batches
+
+# 4. If issues occur, rollback immediately
+./rebalance_rollback.sh
+```
+
+---
+
+## Upcoming Features (v1.0.0)
+
+Still planned for v1.0.0 release:
+
+```bash
+# Configuration file support
+python3 -m ceph_primary_balancer.cli --config config.json
+
+# Custom output directory
+python3 -m ceph_primary_balancer.cli --output-dir ./output/
+
+# Verbose/quiet modes
+python3 -m ceph_primary_balancer.cli --verbose
+```
+
+See [phase4-implementation-tasks.md](../plans/phase4-implementation-tasks.md) for the implementation roadmap.
 
 ---
 

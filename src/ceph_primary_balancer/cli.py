@@ -100,8 +100,20 @@ def main():
         help='Maximum number of primary reassignments to apply (default: unlimited). '
              'Useful for testing or limiting cluster impact.'
     )
+    parser.add_argument(
+        '--batch-size',
+        type=int,
+        default=50,
+        help='Number of commands to execute per batch in generated script (default: 50). '
+             'Script will pause between batches for safety.'
+    )
     
     args = parser.parse_args()
+    
+    # Validate batch-size
+    if args.batch_size <= 0:
+        print("Error: --batch-size must be positive")
+        sys.exit(1)
     
     # Validate weights
     weight_sum = args.weight_osd + args.weight_host + args.weight_pool
@@ -346,13 +358,14 @@ def main():
     
     # Step 10: Generate script or report dry-run
     if not args.dry_run:
-        script_generator.generate_script(swaps, args.output)
+        script_generator.generate_script(swaps, args.output, batch_size=args.batch_size)
         
         # Generate rollback script
         rollback_path = script_generator.generate_rollback_script(swaps, args.output)
         
         print(f"\n" + "="*60)
         print(f"Script written to: {args.output}")
+        print(f"Batch size: {args.batch_size} commands per batch")
         if rollback_path:
             print(f"Rollback script: {rollback_path}")
         print("="*60)

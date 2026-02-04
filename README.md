@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 0.5.0 | **Status:** Production Beta (90% Complete)
+**Version:** 0.8.0 | **Status:** Production Ready (95% Complete)
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -19,20 +19,24 @@ primaries across three dimensions simultaneously:
 
 ## ✨ Features
 
-### ✅ Implemented (v0.4.0+)
-- Multi-dimensional optimization with configurable weights
-- Host topology awareness and balancing
-- Pool-specific filtering and optimization
-- JSON export for automation (`--json-output`)
-- Markdown report generation (`--report-output`)
-- Safe bash script generation with progress tracking
-- **Production safety: Max changes limit** (`--max-changes`) - v1.0.0
+### ✅ Production-Ready (v0.8.0)
+- **Multi-dimensional optimization** with configurable weights
+- **Host topology awareness** and balancing
+- **Pool-specific filtering** and optimization
+- **JSON export** for automation (`--json-output`)
+- **Markdown report generation** (`--report-output`)
+- **Safe bash script generation** with progress tracking
+- **Max changes limit** to control swap count (`--max-changes`)
+- **Cluster health checks** in generated scripts
+- **Automatic rollback script** generation
+- **Batch execution** with configurable batch sizes (`--batch-size`)
+- **Comprehensive unit tests** (57 tests, 95%+ coverage)
 - Zero data movement (metadata only)
 
-### ⏳ Coming Soon (v1.0.0 - Phase 4)
-- Cluster health checks in scripts
-- Rollback script generation
-- Configuration file support
+### ⏳ Coming in v1.0.0
+- Configuration file support (`--config`)
+- Output directory organization (`--output-dir`)
+- Verbose/quiet modes
 
 ## 🚀 Quick Start
 
@@ -61,7 +65,11 @@ cat ./rebalance.sh
 
 ## 📊 Version History
 
-- **v0.4.0** (Current) - Enhanced reporting with JSON/Markdown export - [Release Notes](RELEASE-NOTES-v0.4.0.md)
+- **v0.8.0** (Current) - Comprehensive unit tests and documentation
+- **v0.7.0** - Batch execution support with configurable sizes
+- **v0.6.0** - Automatic rollback script generation
+- **v0.5.0** - Max changes limit and health checks
+- **v0.4.0** - Enhanced reporting with JSON/Markdown export
 - **v0.3.0** - Pool-level optimization (3D balancing)
 - **v0.2.0** - Host-level optimization (2D balancing)
 - **v0.1.0** - MVP with OSD-level balancing

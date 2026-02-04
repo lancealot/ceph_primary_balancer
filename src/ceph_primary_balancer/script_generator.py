@@ -16,28 +16,30 @@ from typing import List, Optional
 from .models import SwapProposal
 
 
-def generate_script(swaps: List[SwapProposal], output_path: str):
+def generate_script(swaps: List[SwapProposal], output_path: str, batch_size: int = 50):
     """
     Generate an executable bash script that applies primary reassignments.
     
     The generated script includes:
     - Safety confirmation prompt before execution
     - Cluster health check (v1.0.0+) - verifies HEALTH_OK or HEALTH_WARN
-    - Progress tracking with formatted output
+    - Batched execution with configurable batch sizes (v0.7.0+)
+    - Progress tracking with formatted output per batch
     - Error handling and failure counting
     - Summary of successful and failed operations
     
     Args:
         swaps: List of SwapProposal objects containing primary reassignments
         output_path: Path where the script should be written
+        batch_size: Number of commands to execute per batch (default: 50)
     
     Raises:
         SystemExit: Exits with code 1 if swaps list is empty or file write fails
         
     Example:
         >>> swaps = [SwapProposal("3.a1", 12, 45, 0.5)]
-        >>> generate_script(swaps, "rebalance.sh")
-        # Creates executable script at rebalance.sh
+        >>> generate_script(swaps, "rebalance.sh", batch_size=50)
+        # Creates executable script with batched execution at rebalance.sh
     """
     # Validate input
     if not swaps:
@@ -55,16 +57,20 @@ def generate_script(swaps: List[SwapProposal], output_path: str):
     # Generate timestamp
     timestamp = datetime.now().isoformat()
     total_commands = len(swaps)
+    num_batches = (total_commands + batch_size - 1) // batch_size  # Ceiling division
     
     # Build script header with shebang and metadata
     script_content = f'''#!/bin/bash
 # Ceph Primary PG Rebalancing Script
 # Generated: {timestamp}
 # Total commands: {total_commands}
+# Batch size: {batch_size}
+# Number of batches: {num_batches}
 
 set -e
 
-echo "This script will execute {total_commands} pg-upmap-primary commands."
+echo "This script will execute {total_commands} pg-upmap-primary commands in {num_batches} batch(es)."
+echo "Batch size: {batch_size} commands per batch"
 read -p "Continue? [y/N] " confirm
 [[ "$confirm" =~ ^[Yy]$ ]] || exit 1
 
@@ -81,6 +87,7 @@ echo "Cluster health: $HEALTH"
 echo ""
 
 TOTAL={total_commands}
+BATCH_SIZE={batch_size}
 COUNT=0
 FAILED=0
 
@@ -99,9 +106,34 @@ apply_mapping() {{
 
 '''
     
-    # Add command calls for each swap
-    for swap in swaps:
-        script_content += f'apply_mapping "{swap.pgid}" {swap.new_primary}\n'
+    # Group swaps into batches and generate commands
+    for batch_num in range(num_batches):
+        start_idx = batch_num * batch_size
+        end_idx = min(start_idx + batch_size, total_commands)
+        batch = swaps[start_idx:end_idx]
+        batch_count = end_idx - start_idx
+        
+        # Add batch header
+        script_content += f'''
+# ==================== Batch {batch_num + 1}/{num_batches} ====================
+echo ""
+echo "=== Batch {batch_num + 1}/{num_batches}: Commands {start_idx + 1}-{end_idx} ({batch_count} commands) ==="
+echo ""
+
+'''
+        
+        # Add command calls for this batch
+        for swap in batch:
+            script_content += f'apply_mapping "{swap.pgid}" {swap.new_primary}\n'
+        
+        # Add pause between batches (except after last batch)
+        if batch_num < num_batches - 1:
+            script_content += f'''
+echo ""
+echo "Batch {batch_num + 1}/{num_batches} complete. Progress: $COUNT/$TOTAL commands ($FAILED failed)"
+read -p "Continue to next batch? [Y/n] " continue_batch
+[[ "$continue_batch" =~ ^[Nn]$ ]] && echo "Stopped by user" && exit 0
+'''
     
     # Add summary footer
     script_content += f'''
