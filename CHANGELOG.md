@@ -7,7 +7,108 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
 
 ## [Unreleased]
-- Phase 5: Benchmark framework (future)
+- Future enhancements TBD
+
+## [1.1.0] - 2026-02-04 - Benchmark Framework Release 📊
+
+### Added - Benchmark Framework (Phase 5)
+- **Complete Benchmark Framework** (~2,530 lines of production code)
+  - New module: `src/ceph_primary_balancer/benchmark/` with 7 submodules
+  - Comprehensive testing infrastructure for optimizer performance validation
+  - Zero external dependencies (Python stdlib only)
+
+- **Test Data Generator** (`benchmark/generator.py` ~440 lines)
+  - Generate synthetic cluster states with configurable parameters
+  - Multiple imbalance patterns: random, concentrated, gradual, bimodal, worst_case, balanced
+  - Support for replicated and erasure-coded pools
+  - Multi-pool scenario generation
+  - Save/load test datasets in JSON format
+  - Reproducible via seeding
+
+- **Performance Profiler** (`benchmark/profiler.py` ~320 lines)
+  - Detailed timing metrics (total, optimization, scoring)
+  - Memory tracking (peak, delta, per-PG, per-OSD)
+  - Throughput analysis (swaps/sec, iterations/sec)
+  - Scalability testing across multiple cluster sizes
+  - Complexity estimation (O(n), O(n²), etc.)
+
+- **Quality Analyzer** (`benchmark/quality_analyzer.py` ~400 lines)
+  - Multi-dimensional balance analysis (OSD/Host/Pool levels)
+  - Convergence analysis (rate, pattern, efficiency)
+  - Stability testing (determinism across runs)
+  - Fairness index calculation (Jain's index)
+  - Balance quality scoring (0-100 scale)
+
+- **Benchmark Runner** (`benchmark/runner.py` ~340 lines)
+  - Complete benchmark suite orchestration
+  - Performance, quality, scalability, and stability tests
+  - Configurable test selection
+  - Regression detection against baselines
+  - Results persistence (JSON export)
+  - Progress tracking and reporting
+
+- **Results Reporter** (`benchmark/reporter.py` ~440 lines)
+  - Terminal reports (summary and detailed)
+  - JSON export for automation
+  - Simple HTML dashboard (no external dependencies)
+  - Formatted tables and metrics
+  - Color-coded results
+
+- **Standard Scenarios** (`benchmark/scenarios.py` ~240 lines)
+  - 15+ predefined test scenarios
+  - Performance scenarios (tiny to x-large)
+  - Quality scenarios (various patterns and configurations)
+  - Edge case scenarios
+  - Quick/standard/comprehensive suites
+
+- **Benchmark CLI** (`benchmark_cli.py` ~350 lines)
+  - `run` - Execute benchmark suites
+  - `compare` - Regression detection
+  - `generate-dataset` - Create synthetic datasets
+  - `quick` - Smoke test
+  - Multiple output formats (terminal, JSON, HTML)
+
+- **Documentation** (~1,200 lines)
+  - Comprehensive usage guide: `docs/BENCHMARK-USAGE.md`
+  - Module README: `src/ceph_primary_balancer/benchmark/README.md`
+  - Example configuration: `config-examples/benchmark-config.json`
+  - Phase 5 summary: `docs/PHASE5-SUMMARY.md`
+  - Benchmark results: `docs/PHASE5-BENCHMARK-RESULTS.md`
+
+### Fixed - Critical Performance Bug
+- **max_iterations Bug** - Fixed unrealistic default causing 10-100x slowdown
+  - Default max_iterations was 10,000 (unrealistic for benchmarking)
+  - Quick suite was taking 60+ minutes instead of expected 30-60 seconds
+  - Standard suite was taking 40+ minutes instead of expected 5-10 minutes
+  - Fixed by:
+    - Adding `max_iterations=1000` to BenchmarkSuite default config
+    - Propagating parameter to all optimization calls in runner.py
+    - Adding parameter to analyze_stability() in quality_analyzer.py
+    - Adding parameter to benchmark_scalability() in profiler.py
+  - **Result:** Quick suite now completes in < 5 seconds ✅
+
+- **Quick Suite Configuration** - Disabled scalability tests for quick suite
+  - Quick suite was running scalability tests (500 OSDs × 25k PGs)
+  - Now properly skips scalability for faster smoke testing
+  - Updated benchmark_cli.py to set `run_scalability=False` for quick suite
+
+### Changed
+- Version bumped to **1.1.0** - Benchmark Framework Release
+- Updated performance expectations in BENCHMARK-USAGE.md
+  - Quick suite: < 5 seconds (was: 30-60 seconds)
+  - Memory requirements updated with actual measured values
+  - Added per-PG memory metrics (~0.84 KB/PG)
+
+### Validated
+- **Benchmark Results** (from comprehensive testing):
+  - Tiny (10 OSDs, 100 PGs): 0.014s, 0.1 MB, 213 swaps/s
+  - Small (50 OSDs, 1k PGs): 4.18s, 0.8 MB, 11 swaps/s
+  - Medium (100 OSDs, 1k PGs): ~6s, ~1 MB (quality benchmark)
+- **Quality Metrics** (replicated_3_moderate):
+  - OSD CV: 23.19% → 10.02% (+56.8% improvement)
+  - Host CV: 8.55% → 0.94% (+89.0% improvement)
+  - Balance Score: 99.9/100
+  - Convergence: Fast pattern, 51 iterations
 
 ## [1.0.0] - 2026-02-04 - Production Release 🎉
 

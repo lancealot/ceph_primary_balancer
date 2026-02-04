@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 1.0.0 🎉 | **Status:** Production Release
+**Version:** 1.1.0-dev 🚀 | **Status:** Phase 5 in Progress
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -94,17 +94,58 @@ python3 -m ceph_primary_balancer.cli --config my-cluster.json
 
 See [config-examples/README.md](config-examples/README.md) for configuration guide and tuning tips.
 
+### 🧪 Benchmarking (NEW in v1.1.0)
+
+**Comprehensive benchmark framework for performance validation and quality assessment.**
+
+```bash
+# Quick smoke test
+python3 -m ceph_primary_balancer.benchmark_cli quick
+
+# Run standard benchmark suite
+python3 -m ceph_primary_balancer.benchmark_cli run --suite standard
+
+# Generate HTML dashboard
+python3 -m ceph_primary_balancer.benchmark_cli run \
+  --suite standard \
+  --html-output dashboard.html
+
+# Compare with baseline for regression detection
+python3 -m ceph_primary_balancer.benchmark_cli compare \
+  --baseline baseline.json \
+  --threshold 0.10
+
+# Generate synthetic test dataset
+python3 -m ceph_primary_balancer.benchmark_cli generate-dataset \
+  --osds 100 \
+  --pgs 5000 \
+  --output dataset.json
+```
+
+**Features:**
+- **Performance profiling** - Runtime and memory metrics
+- **Quality analysis** - Balance improvement, convergence, fairness
+- **Scalability testing** - Multiple scales with complexity analysis
+- **Regression detection** - Compare against baselines
+- **Multi-format output** - Terminal, JSON, HTML dashboard
+- **Standard scenarios** - Quick, standard, and comprehensive suites
+
+See [docs/BENCHMARK-USAGE.md](docs/BENCHMARK-USAGE.md) for complete benchmark documentation.
+
 ## 📖 Documentation
 
 - [Installation Guide](docs/INSTALLATION.md) - Setup and prerequisites
 - [Usage Guide](docs/USAGE.md) - Command examples and workflows
+- [Benchmark Guide](docs/BENCHMARK-USAGE.md) - Comprehensive benchmarking framework (NEW)
 - [Technical Specification](docs/technical-specification.md) - Architecture and algorithms
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Development Guide](docs/DEVELOPMENT.md) - Contributing and testing
+- [Development History](docs/DEVELOPMENT-HISTORY.md) - Complete project evolution
 
 ## 📊 Version History
 
-- **v1.0.0** 🎉 (Current) - Production Release: Configuration management, output organization, verbosity control
+- **v1.1.0-dev** 🚀 (In Progress) - Phase 5: Benchmark framework with performance/quality testing
+- **v1.0.0** 🎉 (2026-02-04) - Production Release: Configuration management, output organization, verbosity control
 - **v0.8.0** - Comprehensive unit tests and documentation (57 tests, 95%+ coverage)
 - **v0.7.0** - Batch execution support with configurable sizes
 - **v0.6.0** - Automatic rollback script generation

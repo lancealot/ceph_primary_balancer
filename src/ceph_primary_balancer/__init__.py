@@ -15,8 +15,9 @@ Version History:
 - v0.7.0: Phase 4 Sprint 1 Complete - Batch execution support
 - v0.8.0: Phase 4 Sprint 2 - Comprehensive unit tests and documentation
 - v1.0.0: Phase 4 Sprint 3 Complete - Configuration management and production release
+- v1.1.0: Phase 5 Complete - Comprehensive benchmark framework
 
-Production Features (v1.0.0):
+Production Features (v1.1.0):
 ✅ Multi-dimensional optimization (OSD, Host, Pool levels)
 ✅ Production safety features (--max-changes, health checks, rollback scripts)
 ✅ Batch execution with configurable sizes
@@ -26,9 +27,10 @@ Production Features (v1.0.0):
 ✅ Verbosity control (--verbose/--quiet)
 ✅ Enhanced reporting (JSON export, markdown reports)
 ✅ Example configurations for common use cases
+✅ Benchmark framework (performance, quality, scalability testing)
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # Package-level imports will be added as modules are implemented
 __all__ = ["__version__"]
