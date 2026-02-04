@@ -1,13 +1,13 @@
 # Usage Guide
 
-**Tool Version:** v0.8.0
+**Tool Version:** v1.0.0 🎉
 **Command:** `python3 -m ceph_primary_balancer.cli`
 
 > **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
 
-> **📋 What's New in v0.8.0?** Comprehensive unit tests (57 tests), improved documentation, and validated production readiness.
+> **📋 What's New in v1.0.0?** Production Release! Configuration file support, output directory organization, and verbosity control.
 
-> **📋 Phase 4 Sprint 1 Complete (v0.5.0-v0.7.0):** --max-changes, health checks, rollback scripts, and batch execution.
+> **📋 All Phase 4 Features Complete:** --max-changes, health checks, rollback scripts, batch execution, comprehensive unit tests (57 tests, 95%+ coverage), and configuration management.
 
 This guide covers common usage patterns for the Ceph Primary PG Balancer.
 
@@ -167,6 +167,157 @@ Continue to next batch? [Y/n]
 - **25-30**: High-value clusters, maximum caution, frequent checkpoints
 - **50 (default)**: Balanced approach for most production clusters
 - **75-100**: Development/test clusters, faster rebalancing
+
+---
+
+## Configuration Management (v1.0.0)
+
+### Using Configuration Files
+
+Load settings from JSON or YAML files for repeatable workflows:
+
+```bash
+# Use pre-built configuration
+python3 -m ceph_primary_balancer.cli --config config-examples/production-safe.json
+
+# Custom configuration file
+python3 -m ceph_primary_balancer.cli --config my-cluster-config.json
+```
+
+### Example Configurations
+
+Four ready-to-use configurations are provided in `config-examples/`:
+
+**1. balanced.json** - Default balanced approach
+```bash
+python3 -m ceph_primary_balancer.cli --config config-examples/balanced.json
+# OSD: 50%, Host: 30%, Pool: 20%
+```
+
+**2. osd-focused.json** - Prioritize individual OSD balance
+```bash
+python3 -m ceph_primary_balancer.cli --config config-examples/osd-focused.json
+# OSD: 70%, Host: 20%, Pool: 10%
+# Best for disk I/O bottlenecks
+```
+
+**3. host-focused.json** - Prioritize host-level balance
+```bash
+python3 -m ceph_primary_balancer.cli --config config-examples/host-focused.json
+# OSD: 20%, Host: 60%, Pool: 20%
+# Best for network bottlenecks
+```
+
+**4. production-safe.json** - Conservative settings
+```bash
+python3 -m ceph_primary_balancer.cli --config config-examples/production-safe.json
+# Limited to 50 changes, batch size 25, organized output
+# Best for first-time production runs
+```
+
+### CLI Override of Config Values
+
+CLI arguments always take precedence over configuration files:
+
+```bash
+# Use config but override max-changes
+python3 -m ceph_primary_balancer.cli \
+  --config config-examples/production-safe.json \
+  --max-changes 100
+
+# Override multiple values
+python3 -m ceph_primary_balancer.cli \
+  --config my-config.json \
+  --weight-osd 0.6 \
+  --weight-host 0.3 \
+  --weight-pool 0.1
+```
+
+### Output Directory Organization
+
+Organize all outputs in a timestamped directory:
+
+```bash
+# Create organized output directory
+python3 -m ceph_primary_balancer.cli --output-dir ./rebalance-20260204
+
+# Generates:
+# ./rebalance-20260204/rebalance_primaries_20260204_032215.sh
+# ./rebalance-20260204/rebalance_primaries_20260204_032215_rollback.sh
+# ./rebalance-20260204/analysis_20260204_032215.json  (if --json-output)
+# ./rebalance-20260204/report_20260204_032215.md     (if --report-output)
+
+# Combine with config
+python3 -m ceph_primary_balancer.cli \
+  --config config-examples/production-safe.json \
+  --output-dir ./results-$(date +%Y%m%d)
+```
+
+### Verbosity Control
+
+Control output detail level:
+
+```bash
+# Verbose mode - detailed information
+python3 -m ceph_primary_balancer.cli --verbose --dry-run
+
+# Quiet mode - minimal output, errors only
+python3 -m ceph_primary_balancer.cli --quiet --output ./rebalance.sh
+
+# Note: --verbose and --quiet are mutually exclusive
+```
+
+### Creating Custom Configurations
+
+1. Copy an example configuration:
+```bash
+cp config-examples/balanced.json my-cluster.json
+```
+
+2. Edit with your preferences:
+```json
+{
+  "optimization": {
+    "target_cv": 0.10,
+    "max_changes": 100,
+    "max_iterations": 10000
+  },
+  "scoring": {
+    "weights": {
+      "osd": 0.5,
+      "host": 0.3,
+      "pool": 0.2
+    }
+  },
+  "output": {
+    "directory": "./rebalance-output",
+    "json_export": true,
+    "markdown_report": true,
+    "script_name": "rebalance_primaries.sh"
+  },
+  "script": {
+    "batch_size": 50,
+    "health_check": true,
+    "generate_rollback": true
+  },
+  "verbosity": {
+    "verbose": false,
+    "quiet": false
+  }
+}
+```
+
+3. Test with dry-run:
+```bash
+python3 -m ceph_primary_balancer.cli --config my-cluster.json --dry-run
+```
+
+4. Apply when satisfied:
+```bash
+python3 -m ceph_primary_balancer.cli --config my-cluster.json
+```
+
+See [config-examples/README.md](../config-examples/README.md) for detailed configuration documentation and tuning guidance.
 
 ---
 

@@ -11,10 +11,14 @@ and configurable weights for OSD, host, and pool dimensions.
 import argparse
 import sys
 import copy
+import os
+from datetime import datetime
+from pathlib import Path
 from . import collector, analyzer, optimizer, script_generator
 from .scorer import Scorer
 from .exporter import JSONExporter
 from .reporter import Reporter
+from .config import Config, ConfigError
 
 
 def main():
@@ -34,6 +38,35 @@ def main():
     parser = argparse.ArgumentParser(
         description='Analyze and optimize Ceph primary PG distribution with three-dimensional balancing'
     )
+    
+    # Configuration file support (v1.0.0)
+    parser.add_argument(
+        '--config',
+        type=str,
+        default=None,
+        help='Load configuration from JSON or YAML file (v1.0.0)'
+    )
+    
+    # Output organization (v1.0.0)
+    parser.add_argument(
+        '--output-dir',
+        type=str,
+        default=None,
+        help='Output directory for all generated files with timestamp-based names (v1.0.0)'
+    )
+    
+    # Verbosity control (v1.0.0)
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Enable verbose output with detailed information (v1.0.0)'
+    )
+    parser.add_argument(
+        '--quiet',
+        action='store_true',
+        help='Minimal output, errors only (v1.0.0)'
+    )
+    
     parser.add_argument(
         '--dry-run',
         action='store_true',
@@ -110,6 +143,94 @@ def main():
     
     args = parser.parse_args()
     
+    # Validate verbose/quiet mutual exclusivity
+    if args.verbose and args.quiet:
+        print("Error: Cannot specify both --verbose and --quiet")
+        sys.exit(1)
+    
+    # Define print helpers for verbosity control
+    def vprint(msg):
+        """Print if verbose mode enabled."""
+        if args.verbose and not args.quiet:
+            print(msg)
+    
+    def qprint(msg):
+        """Print unless quiet mode enabled."""
+        if not args.quiet:
+            print(msg)
+    
+    # Load configuration file if specified (v1.0.0)
+    config = None
+    if args.config:
+        vprint(f"Loading configuration from: {args.config}")
+        try:
+            config = Config(args.config)
+            vprint("Configuration loaded successfully")
+        except ConfigError as e:
+            print(f"Error loading configuration: {e}")
+            sys.exit(1)
+    else:
+        config = Config()  # Use defaults
+    
+    # Apply configuration values with CLI override precedence
+    # CLI args > config file > defaults
+    if args.target_cv == 0.10:  # Default value, check config
+        args.target_cv = config.get('optimization.target_cv', 0.10)
+    
+    if args.weight_osd == 0.5:  # Default value
+        args.weight_osd = config.get('scoring.weights.osd', 0.5)
+    
+    if args.weight_host == 0.3:  # Default value
+        args.weight_host = config.get('scoring.weights.host', 0.3)
+    
+    if args.weight_pool == 0.2:  # Default value
+        args.weight_pool = config.get('scoring.weights.pool', 0.2)
+    
+    if args.max_changes is None:
+        args.max_changes = config.get('optimization.max_changes')
+    
+    if args.batch_size == 50:  # Default value
+        args.batch_size = config.get('script.batch_size', 50)
+    
+    # Handle output directory (v1.0.0)
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+        vprint(f"Creating output directory: {output_dir}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate timestamp for filenames
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Update output paths with organized structure
+        if args.output == './rebalance_primaries.sh':  # Default value
+            script_name = config.get('output.script_name', 'rebalance_primaries.sh')
+            script_name = script_name.replace('.sh', f'_{timestamp}.sh')
+            args.output = str(output_dir / script_name)
+        
+        if args.json_output and not Path(args.json_output).is_absolute():
+            # Relative path or just filename, place in output dir
+            json_name = Path(args.json_output).name
+            if json_name == args.json_output:  # Just filename
+                json_name = f'analysis_{timestamp}.json'
+            args.json_output = str(output_dir / json_name)
+        elif args.output_dir and not args.json_output:
+            # Auto-generate JSON output in output dir if requested by config
+            if config.get('output.json_export', False):
+                args.json_output = str(output_dir / f'analysis_{timestamp}.json')
+        
+        if args.report_output and not Path(args.report_output).is_absolute():
+            # Relative path or just filename, place in output dir
+            report_name = Path(args.report_output).name
+            if report_name == args.report_output:  # Just filename
+                report_name = f'report_{timestamp}.md'
+            args.report_output = str(output_dir / report_name)
+        elif args.output_dir and not args.report_output:
+            # Auto-generate markdown report in output dir if requested by config
+            if config.get('output.markdown_report', False):
+                args.report_output = str(output_dir / f'report_{timestamp}.md')
+        
+        qprint(f"Output directory: {output_dir}")
+    
     # Validate batch-size
     if args.batch_size <= 0:
         print("Error: --batch-size must be positive")
@@ -135,14 +256,15 @@ def main():
     scorer = Scorer(w_osd=args.weight_osd, w_host=args.weight_host, w_pool=args.weight_pool)
     
     # Step 1: Collect cluster data
-    print("Collecting cluster data...")
+    qprint("Collecting cluster data...")
     try:
         state = collector.build_cluster_state()
     except Exception as e:
-        print(f"Error collecting cluster data: {e}")
+        print(f"Error collecting cluster data: {e}")  # Always print errors
         sys.exit(1)
     
-    print(f"Found {len(state.osds)} OSDs, {len(state.hosts)} hosts, {len(state.pools)} pools, {len(state.pgs)} PGs")
+    qprint(f"Found {len(state.osds)} OSDs, {len(state.hosts)} hosts, {len(state.pools)} pools, {len(state.pgs)} PGs")
+    vprint(f"  OSDs: {list(state.osds.keys())[:10]}..." if len(state.osds) > 10 else f"  OSDs: {list(state.osds.keys())}")
     
     # Step 2: Calculate current statistics
     print("\n" + "="*60)

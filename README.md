@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 0.8.0 | **Status:** Production Ready (95% Complete)
+**Version:** 1.0.0 🎉 | **Status:** Production Release
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -19,26 +19,40 @@ primaries across three dimensions simultaneously:
 
 ## ✨ Features
 
-### ✅ Production-Ready (v0.8.0)
+### ✅ Production Release v1.0.0
+**Core Optimization:**
 - **Multi-dimensional optimization** with configurable weights
 - **Host topology awareness** and balancing
 - **Pool-specific filtering** and optimization
-- **JSON export** for automation (`--json-output`)
-- **Markdown report generation** (`--report-output`)
-- **Safe bash script generation** with progress tracking
+- Zero data movement (metadata only)
+
+**Configuration Management (NEW in v1.0.0):**
+- **Configuration file support** (`--config`) - JSON/YAML files
+- **Example configurations** for common use cases (OSD-focused, host-focused, production-safe)
+- **Hierarchical precedence** - CLI args override config files
+- **Output directory organization** (`--output-dir`) with timestamp-based naming
+- **Verbosity control** (`--verbose`/`--quiet` modes)
+
+**Production Safety:**
 - **Max changes limit** to control swap count (`--max-changes`)
 - **Cluster health checks** in generated scripts
 - **Automatic rollback script** generation
 - **Batch execution** with configurable batch sizes (`--batch-size`)
-- **Comprehensive unit tests** (57 tests, 95%+ coverage)
-- Zero data movement (metadata only)
 
-### ⏳ Coming in v1.0.0
-- Configuration file support (`--config`)
-- Output directory organization (`--output-dir`)
-- Verbose/quiet modes
+**Reporting & Export:**
+- **JSON export** for automation (`--json-output`)
+- **Markdown report generation** (`--report-output`)
+- **Enhanced terminal reports** with comparison tables
+- **Safe bash script generation** with progress tracking
+
+**Quality Assurance:**
+- **Comprehensive unit tests** (57 tests, 95%+ coverage)
+- **Integration tests** for all phases
+- **Production validated** and ready for enterprise use
 
 ## 🚀 Quick Start
+
+### Basic Usage
 
 ```bash
 # Install dependencies (Python 3.8+ required)
@@ -55,6 +69,31 @@ cat ./rebalance.sh
 ./rebalance.sh
 ```
 
+### Using Configuration Files (v1.0.0)
+
+```bash
+# Use pre-built configuration for production-safe rebalancing
+python3 -m ceph_primary_balancer.cli --config config-examples/production-safe.json
+
+# OSD-focused optimization with organized output
+python3 -m ceph_primary_balancer.cli \
+  --config config-examples/osd-focused.json \
+  --output-dir ./rebalance-results
+
+# Override config values with CLI args
+python3 -m ceph_primary_balancer.cli \
+  --config config-examples/balanced.json \
+  --max-changes 50 \
+  --verbose
+
+# Create custom configuration (copy and modify examples)
+cp config-examples/balanced.json my-cluster.json
+# Edit my-cluster.json with your settings
+python3 -m ceph_primary_balancer.cli --config my-cluster.json
+```
+
+See [config-examples/README.md](config-examples/README.md) for configuration guide and tuning tips.
+
 ## 📖 Documentation
 
 - [Installation Guide](docs/INSTALLATION.md) - Setup and prerequisites
@@ -65,7 +104,8 @@ cat ./rebalance.sh
 
 ## 📊 Version History
 
-- **v0.8.0** (Current) - Comprehensive unit tests and documentation
+- **v1.0.0** 🎉 (Current) - Production Release: Configuration management, output organization, verbosity control
+- **v0.8.0** - Comprehensive unit tests and documentation (57 tests, 95%+ coverage)
 - **v0.7.0** - Batch execution support with configurable sizes
 - **v0.6.0** - Automatic rollback script generation
 - **v0.5.0** - Max changes limit and health checks
