@@ -55,6 +55,9 @@ Thumbs.db
 # Generated scripts
 rebalance*.sh
 
+# Benchmark results
+benchmark_results/
+
 # Production cluster data and test outputs
 tests/fixtures/production_cluster/
 tests/fixtures/*/reports/
@@ -62,5 +65,6 @@ tests/fixtures/*/reports/
 *.md
 !README.md
 !CHANGELOG.md
+!RELEASE-NOTES*.md
 !docs/*.md
 !plans/*.md
