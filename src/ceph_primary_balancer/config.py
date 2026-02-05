@@ -56,7 +56,8 @@ class Config:
             'optimization': {
                 'target_cv': 0.10,
                 'max_changes': None,
-                'max_iterations': 10000
+                'max_iterations': 10000,
+                'enabled_levels': ['osd', 'host', 'pool']
             },
             'scoring': {
                 'weights': {
@@ -202,3 +203,52 @@ class Config:
             Complete configuration dictionary.
         """
         return self.settings.copy()
+    
+    def validate_enabled_levels(self) -> None:
+        """
+        Validate enabled_levels configuration.
+        
+        Rules:
+        - Must be list of strings
+        - Valid values: 'osd', 'host', 'pool'
+        - At least one level must be enabled
+        - Weights for disabled levels are ignored and normalized
+        
+        Raises:
+            ConfigError: If validation fails
+        """
+        levels = self.get('optimization.enabled_levels', ['osd', 'host', 'pool'])
+        
+        if not isinstance(levels, list):
+            raise ConfigError("enabled_levels must be a list")
+        
+        if not levels:
+            raise ConfigError("At least one optimization level must be enabled")
+        
+        valid_levels = {'osd', 'host', 'pool'}
+        for level in levels:
+            if level not in valid_levels:
+                raise ConfigError(
+                    f"Invalid level '{level}'. Valid levels: {', '.join(sorted(valid_levels))}"
+                )
+        
+        # Normalize weights for enabled levels only
+        enabled_weights = {}
+        for level in levels:
+            weight = self.get(f'scoring.weights.{level}', 1.0 / len(levels))
+            enabled_weights[level] = weight
+        
+        total = sum(enabled_weights.values())
+        if total > 0:
+            # Normalize to sum to 1.0
+            for level in enabled_weights:
+                enabled_weights[level] /= total
+            
+            # Update settings with normalized weights
+            if 'scoring' not in self.settings:
+                self.settings['scoring'] = {}
+            if 'weights' not in self.settings['scoring']:
+                self.settings['scoring']['weights'] = {}
+            
+            # Only keep weights for enabled levels
+            self.settings['scoring']['weights'] = enabled_weights

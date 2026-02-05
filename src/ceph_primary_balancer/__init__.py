@@ -16,12 +16,15 @@ Version History:
 - v0.8.0: Phase 4 Sprint 2 - Comprehensive unit tests and documentation
 - v1.0.0: Phase 4 Sprint 3 Complete - Configuration management and production release
 - v1.1.0: Phase 5 Complete - Comprehensive benchmark framework
+- v1.2.0: Phase 6.5 Complete - Configurable optimization levels
 
-Production Features (v1.1.0):
+Production Features (v1.2.0):
 ✅ Multi-dimensional optimization (OSD, Host, Pool levels)
+✅ Configurable optimization levels (enable/disable dimensions for performance tuning)
+✅ Strategy selection (OSD-only, OSD+HOST, OSD+POOL, HOST+POOL, Full-3D)
 ✅ Production safety features (--max-changes, health checks, rollback scripts)
 ✅ Batch execution with configurable sizes
-✅ Comprehensive test suite (57 tests, 95%+ coverage)
+✅ Comprehensive test suite (65+ tests, 95%+ coverage)
 ✅ Configuration file support (JSON/YAML)
 ✅ Organized output directories (--output-dir)
 ✅ Verbosity control (--verbose/--quiet)
@@ -30,7 +33,7 @@ Production Features (v1.1.0):
 ✅ Benchmark framework (performance, quality, scalability testing)
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 # Package-level imports will be added as modules are implemented
 __all__ = ["__version__"]

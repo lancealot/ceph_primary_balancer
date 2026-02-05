@@ -21,6 +21,73 @@ from .reporter import Reporter
 from .config import Config, ConfigError
 
 
+def print_optimization_strategies():
+    """Print available optimization strategies and their descriptions."""
+    print("\n" + "="*80)
+    print("Available Optimization Strategies (Phase 6.5)")
+    print("="*80 + "\n")
+    
+    strategies = [
+        {
+            'name': 'OSD-ONLY',
+            'flag': '--optimization-levels osd',
+            'description': 'Balances primary distribution across OSDs',
+            'speed': 'Fastest strategy, simplest approach',
+            'use_for': 'Small clusters, quick fixes, lab environments',
+            'performance': 'Time: ~1× baseline, Memory: ~1× baseline'
+        },
+        {
+            'name': 'OSD+HOST',
+            'flag': '--optimization-levels osd,host',
+            'description': 'Balances OSDs and host network load',
+            'speed': 'Good balance of speed and quality',
+            'use_for': 'Multi-host clusters, network hotspots',
+            'performance': 'Time: ~2× baseline, Memory: ~1.5× baseline'
+        },
+        {
+            'name': 'OSD+POOL',
+            'flag': '--optimization-levels osd,pool',
+            'description': 'Balances OSDs and per-pool distribution',
+            'speed': 'Good for multi-pool workload isolation',
+            'use_for': 'Multi-pool clusters, workload separation',
+            'performance': 'Time: ~2× baseline, Memory: ~2× baseline'
+        },
+        {
+            'name': 'HOST+POOL',
+            'flag': '--optimization-levels host,pool',
+            'description': 'Balances network and pool-level distribution',
+            'speed': 'Network-focused optimization',
+            'use_for': 'Network-constrained clusters',
+            'performance': 'Time: ~1.5× baseline, Memory: ~1.5× baseline'
+        },
+        {
+            'name': 'FULL-3D (DEFAULT)',
+            'flag': '--optimization-levels osd,host,pool',
+            'description': 'Comprehensive three-dimensional balancing',
+            'speed': 'Best overall quality',
+            'use_for': 'Production clusters, comprehensive optimization',
+            'performance': 'Time: ~3-4× baseline, Memory: ~3× baseline'
+        }
+    ]
+    
+    for i, strategy in enumerate(strategies, 1):
+        print(f"{i}. {strategy['name']}")
+        print(f"   Usage: {strategy['flag']}")
+        print(f"   Description: {strategy['description']}")
+        print(f"   Speed: {strategy['speed']}")
+        print(f"   Use for: {strategy['use_for']}")
+        print(f"   Performance: {strategy['performance']}")
+        print()
+    
+    print("Recommendation:")
+    print("- Development/Testing: Use OSD-only for quick iterations")
+    print("- Small Production (<100 OSDs): Use OSD+HOST")
+    print("- Large Production (>100 OSDs): Use Full 3D")
+    print("- Network-Constrained: Use HOST+POOL or OSD+HOST")
+    print("- Single-Pool Clusters: Use OSD+HOST (skip pool optimization)")
+    print("\n" + "="*80 + "\n")
+
+
 def main():
     """Main entry point for the CLI.
     
@@ -141,7 +208,28 @@ def main():
              'Script will pause between batches for safety.'
     )
     
+    # Phase 6.5: Configurable optimization levels
+    parser.add_argument(
+        '--optimization-levels',
+        type=str,
+        default='osd,host,pool',
+        help='Comma-separated optimization levels: osd,host,pool (default: all). '
+             'Examples: "osd" for OSD-only, "osd,host" for OSD+HOST. '
+             'Phase 6.5: Enables selective dimension optimization for performance tuning.'
+    )
+    
+    parser.add_argument(
+        '--list-optimization-strategies',
+        action='store_true',
+        help='List available optimization strategies with descriptions and exit (Phase 6.5)'
+    )
+    
     args = parser.parse_args()
+    
+    # Handle --list-optimization-strategies flag
+    if args.list_optimization_strategies:
+        print_optimization_strategies()
+        sys.exit(0)
     
     # Validate verbose/quiet mutual exclusivity
     if args.verbose and args.quiet:
@@ -252,8 +340,28 @@ def main():
         print("Error: --max-changes must be non-negative")
         sys.exit(1)
     
-    # Create scorer with configured weights (Phase 2: three dimensions)
-    scorer = Scorer(w_osd=args.weight_osd, w_host=args.weight_host, w_pool=args.weight_pool)
+    # Phase 6.5: Parse and validate optimization levels
+    enabled_levels = [level.strip() for level in args.optimization_levels.split(',')]
+    valid_levels = {'osd', 'host', 'pool'}
+    
+    for level in enabled_levels:
+        if level not in valid_levels:
+            print(f"Error: Invalid optimization level '{level}'")
+            print(f"Valid levels: {', '.join(sorted(valid_levels))}")
+            print("Use --list-optimization-strategies to see available strategies")
+            sys.exit(1)
+    
+    if not enabled_levels:
+        print("Error: At least one optimization level must be enabled")
+        sys.exit(1)
+    
+    # Create scorer with configured weights and enabled levels (Phase 6.5)
+    scorer = Scorer(
+        w_osd=args.weight_osd,
+        w_host=args.weight_host,
+        w_pool=args.weight_pool,
+        enabled_levels=enabled_levels
+    )
     
     # Step 1: Collect cluster data
     qprint("Collecting cluster data...")
@@ -348,7 +456,13 @@ def main():
     # Store original state for reporting (before optimization modifies it)
     original_state = copy.deepcopy(state)
     
-    swaps = optimizer.optimize_primaries(state, args.target_cv, scorer=scorer, pool_filter=args.pool)
+    swaps = optimizer.optimize_primaries(
+        state,
+        args.target_cv,
+        scorer=scorer,
+        pool_filter=args.pool,
+        enabled_levels=enabled_levels
+    )
     
     # Step 5: Handle case where no swaps were found
     if not swaps:

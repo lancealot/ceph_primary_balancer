@@ -270,7 +270,8 @@ def optimize_primaries(
     target_cv: float = 0.10,
     max_iterations: int = 1000,
     scorer: Optional[Scorer] = None,
-    pool_filter: Optional[int] = None
+    pool_filter: Optional[int] = None,
+    enabled_levels: Optional[List[str]] = None
 ) -> List[SwapProposal]:
     """
     Main greedy algorithm loop to find all beneficial swaps.
@@ -284,12 +285,18 @@ def optimize_primaries(
     Phase 2 Update: Now supports three-dimensional optimization with configurable
     scoring weights for OSD, host, and pool-level balance. Also supports pool filtering.
     
+    Phase 6.5 Update: Added enabled_levels parameter to selectively enable/disable
+    optimization dimensions (OSD, HOST, POOL) for performance optimization and
+    targeted balancing strategies.
+    
     Args:
         state: ClusterState to optimize (modified in place)
         target_cv: Target coefficient of variation for OSD level (default: 0.10 = 10%)
         max_iterations: Maximum number of iterations (default: 1000)
-        scorer: Optional Scorer instance. If None, uses Phase 2 defaults (0.5 OSD, 0.3 host, 0.2 pool)
+        scorer: Optional Scorer instance. If None, creates one based on enabled_levels
         pool_filter: Optional pool_id to only optimize PGs from that specific pool
+        enabled_levels: Optional list of enabled optimization levels ['osd', 'host', 'pool'].
+                       If None, all levels are enabled (default behavior).
         
     Returns:
         List of all SwapProposal objects applied (empty list if no swaps possible)
@@ -304,9 +311,31 @@ def optimize_primaries(
         print("Warning: No OSDs found, cannot optimize")
         return swaps
     
-    # Use default scorer if none provided (Phase 2 defaults)
+    # Use default scorer if none provided
     if scorer is None:
-        scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
+        if enabled_levels:
+            # Auto-adjust weights based on enabled levels
+            num_levels = len(enabled_levels)
+            weight = 1.0 / num_levels
+            
+            w_osd = weight if 'osd' in enabled_levels else 0.0
+            w_host = weight if 'host' in enabled_levels else 0.0
+            w_pool = weight if 'pool' in enabled_levels else 0.0
+            
+            scorer = Scorer(
+                w_osd=w_osd,
+                w_host=w_host,
+                w_pool=w_pool,
+                enabled_levels=enabled_levels
+            )
+        else:
+            # Phase 2 defaults: all levels enabled
+            scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
+    
+    # Print optimization strategy
+    levels_str = ', '.join(scorer.get_enabled_levels()).upper()
+    print(f"Optimization strategy: {levels_str}")
+    print(f"Weights: OSD={scorer.w_osd:.2f}, HOST={scorer.w_host:.2f}, POOL={scorer.w_pool:.2f}")
     
     # If pool filtering is enabled, print info
     if pool_filter is not None:
