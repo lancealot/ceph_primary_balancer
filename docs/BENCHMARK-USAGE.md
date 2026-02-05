@@ -545,7 +545,19 @@ pipeline {
 
 ## Performance Expectations
 
-### Typical Runtimes
+> **📊 Reference Benchmarks:** For detailed performance results on Apple M1 hardware, see [M1-BENCHMARK-RESULTS.md](M1-BENCHMARK-RESULTS.md)
+
+### Typical Runtimes (MacBook Air M1)
+
+| Cluster Size | OSDs | PGs | Execution Time | Memory | Notes |
+|--------------|------|-----|----------------|--------|-------|
+| **Tiny** | 10 | 100 | **< 0.01s** | 0.1 MB | Smoke test |
+| **Small** | 50 | 500 | **< 1s** | 0.4 MB | Quick validation |
+| **Medium** | 100 | 1024 | **1-2s** | ~0.8 MB | Standard test |
+| **Standard** | 100 | 2000 | **~38s** | 1.7 MB | Typical cluster |
+| **Large** | 250 | 5000 | **~14 min** | 3.9 MB | Production scale |
+
+**Benchmark Suite Runtimes:**
 
 | Benchmark Suite | Scenarios | Typical Duration | Notes |
 |----------------|-----------|------------------|-------|
@@ -557,14 +569,22 @@ pipeline {
 
 \* *Note: Standard and comprehensive suites include large scenarios (10k+ PGs) which significantly increase runtime. Consider using custom configurations for faster testing.*
 
-### Memory Requirements
+### Memory Requirements (Verified on M1)
 
 | Cluster Scale | Peak Memory | Per-PG Memory |
 |--------------|-------------|---------------|
-| 10 OSDs, 100 PGs | 0.1 MB | 0.86 KB |
-| 50 OSDs, 1k PGs | 0.8 MB | 0.84 KB |
-| 100 OSDs, 5k PGs | ~4 MB | ~0.8 KB |
-| 500 OSDs, 25k PGs | ~20 MB | ~0.8 KB |
+| 10 OSDs, 100 PGs | 0.1 MB | 1.0 KB |
+| 50 OSDs, 500 PGs | 0.4 MB | 0.8 KB |
+| 100 OSDs, 1024 PGs | 0.8 MB | 0.8 KB |
+| 100 OSDs, 2000 PGs | 1.7 MB | 0.85 KB |
+| 250 OSDs, 5000 PGs | 3.9 MB | 0.78 KB |
+
+**Scaling Characteristic:** Linear O(n) memory usage with ~0.8 KB per PG.
+
+**Projections:**
+- 10,000 PGs: ~8 MB
+- 25,000 PGs: ~20 MB
+- 50,000 PGs: ~40 MB
 
 ---
 
@@ -613,6 +633,7 @@ python3 -m ceph_primary_balancer.benchmark_cli run --seed 42
 ## References
 
 - **Main Documentation**: [README.md](../README.md)
+- **M1 Benchmark Results**: [M1-BENCHMARK-RESULTS.md](M1-BENCHMARK-RESULTS.md) ⭐ NEW
 - **Usage Guide**: [USAGE.md](USAGE.md)
 - **Technical Specification**: [technical-specification.md](technical-specification.md)
 - **Phase 5 Plan**: [plans/phase5-benchmark-framework.md](../plans/phase5-benchmark-framework.md)

@@ -138,13 +138,21 @@ python3 -m ceph_primary_balancer.benchmark_cli generate-dataset \
 - **Multi-format output** - Terminal, JSON, HTML dashboard
 - **Standard scenarios** - Quick, standard, and comprehensive suites
 
-See [docs/BENCHMARK-USAGE.md](docs/BENCHMARK-USAGE.md) for complete benchmark documentation.
+**Performance Reference (MacBook Air M1):**
+- **Tiny (100 PGs):** < 0.01s, 0.1 MB
+- **Small (500 PGs):** < 1s, 0.4 MB
+- **Medium (2000 PGs):** ~38s, 1.7 MB
+- **Large (5000 PGs):** ~14 min, 3.9 MB
+
+See [docs/BENCHMARK-USAGE.md](docs/BENCHMARK-USAGE.md) for complete benchmark documentation and [docs/M1-BENCHMARK-RESULTS.md](docs/M1-BENCHMARK-RESULTS.md) for detailed M1 performance results.
 
 ## 📖 Documentation
 
 - [Installation Guide](docs/INSTALLATION.md) - Setup and prerequisites
 - [Usage Guide](docs/USAGE.md) - Command examples and workflows
 - [Benchmark Guide](docs/BENCHMARK-USAGE.md) - Comprehensive benchmarking framework (NEW)
+- [M1 Benchmark Results](docs/M1-BENCHMARK-RESULTS.md) - Performance results on Apple M1 (NEW) ⭐
+- [Computational Complexity](docs/COMPUTATIONAL-COMPLEXITY.md) - Algorithm complexity & scalability (NEW) ⭐
 - [Technical Specification](docs/technical-specification.md) - Architecture and algorithms
 - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Development Guide](docs/DEVELOPMENT.md) - Contributing and testing
