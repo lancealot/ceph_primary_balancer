@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 1.1.0-dev 🚀 | **Status:** Phase 5 in Progress
+**Version:** 1.2.0 🚀 | **Status:** Production Ready
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -19,16 +19,24 @@ primaries across three dimensions simultaneously:
 
 ## ✨ Features
 
-### ✅ Production Release v1.0.0
+### ✅ Current Release v1.2.0
 **Core Optimization:**
 - **Multi-dimensional optimization** with configurable weights
+- **Configurable optimization levels** (NEW in v1.2.0) - Enable/disable specific dimensions
 - **Host topology awareness** and balancing
 - **Pool-specific filtering** and optimization
 - Zero data movement (metadata only)
 
-**Configuration Management (NEW in v1.0.0):**
+**Optimization Strategies (NEW in v1.2.0):**
+- **OSD-only** - Fastest (~3× speedup), ideal for quick fixes
+- **OSD+HOST** - Balanced (~1.7× speedup), best for multi-host clusters
+- **HOST+POOL** - Network-focused (~2.5× speedup)
+- **Full 3D** - Comprehensive, all dimensions (default)
+- Use `--list-optimization-strategies` to see all available strategies
+
+**Configuration Management:**
 - **Configuration file support** (`--config`) - JSON/YAML files
-- **Example configurations** for common use cases (OSD-focused, host-focused, production-safe)
+- **7 example configurations** including optimization strategy examples
 - **Hierarchical precedence** - CLI args override config files
 - **Output directory organization** (`--output-dir`) with timestamp-based naming
 - **Verbosity control** (`--verbose`/`--quiet` modes)

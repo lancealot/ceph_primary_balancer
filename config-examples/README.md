@@ -26,7 +26,11 @@ Configuration values follow this precedence (highest to lowest):
 
 ## Available Configurations
 
-### balanced.json (Default Strategy)
+> **New in v1.2.0:** Configurable optimization levels allow you to enable/disable specific dimensions (OSD, HOST, POOL) for improved performance. See optimization strategy examples below.
+
+### Standard Configurations
+
+#### balanced.json (Default Strategy - Full 3D)
 **Use Case:** General-purpose optimization balancing all three dimensions equally
 
 **Characteristics:**
@@ -93,6 +97,68 @@ Configuration values follow this precedence (highest to lowest):
 
 ---
 
+### Optimization Strategy Configurations (v1.2.0+)
+
+These configurations demonstrate the new `enabled_levels` feature, allowing you to selectively optimize specific dimensions for improved performance.
+
+#### osd-only-fast.json (OSD-Only Strategy)
+**Use Case:** Fastest optimization focusing only on individual OSD balance
+
+**Characteristics:**
+- **Performance:** ~3× faster than Full 3D optimization
+- **Memory:** ~0.3× of Full 3D
+- Enabled levels: OSD only
+- Weight: OSD (100%)
+- Target CV: 10%
+- Large batch size: 100 commands
+
+**Best For:**
+- Quick fixes and rapid testing
+- Small clusters (<50 OSDs)
+- Development environments
+- Single-host clusters where host balance is irrelevant
+- Fast iteration during troubleshooting
+
+---
+
+#### osd-host-balanced.json (OSD+HOST Strategy)
+**Use Case:** Balanced optimization for multi-host clusters without pool concerns
+
+**Characteristics:**
+- **Performance:** ~1.7× faster than Full 3D optimization
+- **Memory:** ~0.5× of Full 3D
+- Enabled levels: OSD and HOST
+- Weights: OSD (60%), Host (40%)
+- Target CV: 10%
+- Auto-exports JSON and markdown reports
+
+**Best For:**
+- Multi-host production clusters
+- Single-pool clusters where pool balance is not needed
+- Balance between performance and comprehensiveness
+- Network and disk I/O optimization
+
+---
+
+#### network-focused.json (HOST+POOL Strategy)
+**Use Case:** Network-focused optimization prioritizing host and pool balance
+
+**Characteristics:**
+- **Performance:** ~2.5× faster than Full 3D optimization
+- **Memory:** ~0.4× of Full 3D
+- Enabled levels: HOST and POOL
+- Weights: Host (70%), Pool (30%)
+- Target CV: 10%
+- Auto-exports JSON and markdown reports
+
+**Best For:**
+- Network-constrained clusters
+- Scenarios where network is the bottleneck (not disk)
+- Multi-pool clusters with host saturation issues
+- RGW or RBD workloads with high network throughput
+
+---
+
 ## Configuration File Format
 
 ### JSON Structure
@@ -102,7 +168,8 @@ Configuration values follow this precedence (highest to lowest):
   "optimization": {
     "target_cv": 0.10,          // Target coefficient of variation
     "max_changes": null,         // Maximum swaps (null = unlimited)
-    "max_iterations": 10000      // Maximum optimization iterations
+    "max_iterations": 10000,     // Maximum optimization iterations
+    "enabled_levels": ["osd", "host", "pool"]  // v1.2.0+: Dimensions to optimize
   },
   "scoring": {
     "weights": {
@@ -139,6 +206,7 @@ optimization:
   target_cv: 0.10
   max_changes: null
   max_iterations: 10000
+  enabled_levels: ["osd", "host", "pool"]  # v1.2.0+: Dimensions to optimize
 
 scoring:
   weights:
@@ -193,6 +261,34 @@ verbosity:
 
 **Important:** Weights must always sum to 1.0.
 
+### Choosing Optimization Levels (v1.2.0+)
+
+The `enabled_levels` option allows you to selectively enable optimization dimensions:
+
+**Available Strategies:**
+- `["osd"]` - OSD-only (fastest, ~3× speedup)
+- `["osd", "host"]` - OSD+HOST (balanced, ~1.7× speedup)
+- `["osd", "pool"]` - OSD+POOL (~1.4× speedup)
+- `["host", "pool"]` - HOST+POOL (network-focused, ~2.5× speedup)
+- `["osd", "host", "pool"]` - Full 3D (default, comprehensive)
+
+**When to Use Fewer Dimensions:**
+- **Single-host clusters:** Use `["osd"]` only
+- **Single-pool clusters:** Omit `"pool"` from enabled_levels
+- **Network bottlenecks:** Use `["host", "pool"]`
+- **Quick testing:** Use `["osd"]` for fastest results
+- **Large clusters:** Consider `["osd", "host"]` for better performance
+
+**Performance vs Comprehensiveness Trade-off:**
+- More dimensions = more comprehensive but slower
+- Fewer dimensions = faster but may miss cross-dimensional issues
+- Choose based on your cluster's specific bottleneck
+
+To see all available strategies with recommendations:
+```bash
+python3 -m ceph_primary_balancer.cli --list-optimization-strategies
+```
+
 ## Tips and Best Practices
 
 1. **Start Conservative:** Use `production-safe.json` for first runs
@@ -221,6 +317,8 @@ Check that:
 - `max_changes` is positive or null
 - `batch_size` is positive
 - `verbose` and `quiet` are not both true
+- `enabled_levels` contains only valid values: "osd", "host", "pool"
+- At least one level is enabled
 
 ## See Also
 

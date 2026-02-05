@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.ceph.com/schemas/ceph-primary-balancer-config-v1.2.json",
+  "description": "OSD-only optimization - fastest strategy (~3× faster than Full 3D), ideal for quick fixes and small clusters",
+  "optimization": {
+    "target_cv": 0.10,
+    "max_changes": null,
+    "max_iterations": 10000,
+    "enabled_levels": ["osd"]
+  },
+  "scoring": {
+    "weights": {
+      "osd": 1.0,
+      "host": 0.0,
+      "pool": 0.0
+    }
+  },
+  "output": {
+    "directory": null,
+    "json_export": false,
+    "markdown_report": false,
+    "script_name": "rebalance_primaries.sh"
+  },
+  "script": {
+    "batch_size": 100,
+    "health_check": true,
+    "generate_rollback": true,
+    "organized_by_pool": false
+  },
+  "verbosity": {
+    "verbose": false,
+    "quiet": false
+  }
+}

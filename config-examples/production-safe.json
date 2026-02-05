@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.ceph.com/schemas/ceph-primary-balancer-config-v1.2.json",
+  "description": "Production-safe configuration - conservative settings for gradual rebalancing",
+  "optimization": {
+    "target_cv": 0.15,
+    "max_changes": 50,
+    "max_iterations": 5000,
+    "enabled_levels": ["osd", "host", "pool"]
+  },
+  "scoring": {
+    "weights": {
+      "osd": 0.5,
+      "host": 0.3,
+      "pool": 0.2
+    }
+  },
+  "output": {
+    "directory": "./rebalance-output",
+    "json_export": true,
+    "markdown_report": true,
+    "script_name": "rebalance_primaries.sh"
+  },
+  "script": {
+    "batch_size": 25,
+    "health_check": true,
+    "generate_rollback": true,
+    "organized_by_pool": false
+  },
+  "verbosity": {
+    "verbose": false,
+    "quiet": false
+  }
+}

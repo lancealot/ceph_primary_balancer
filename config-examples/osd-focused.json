@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.ceph.com/schemas/ceph-primary-balancer-config-v1.2.json",
+  "description": "OSD-focused configuration - prioritize OSD-level balance for disk I/O optimization",
+  "optimization": {
+    "target_cv": 0.05,
+    "max_changes": null,
+    "max_iterations": 10000,
+    "enabled_levels": ["osd", "host", "pool"]
+  },
+  "scoring": {
+    "weights": {
+      "osd": 0.7,
+      "host": 0.2,
+      "pool": 0.1
+    }
+  },
+  "output": {
+    "directory": null,
+    "json_export": true,
+    "markdown_report": true,
+    "script_name": "rebalance_primaries.sh"
+  },
+  "script": {
+    "batch_size": 100,
+    "health_check": true,
+    "generate_rollback": true,
+    "organized_by_pool": false
+  },
+  "verbosity": {
+    "verbose": false,
+    "quiet": false
+  }
+}

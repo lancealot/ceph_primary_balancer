@@ -1,0 +1,53 @@
+{
+  "_comment": "Example benchmark configuration for Ceph Primary PG Balancer v1.1.0",
+  "benchmark": {
+    "target_cv": 0.10,
+    "seed": 42,
+    "output_dir": "./benchmark_results",
+    "save_datasets": false
+  },
+  "performance": {
+    "scenarios": [
+      "tiny_smoke",
+      "small_quick",
+      "medium_standard"
+    ],
+    "profile_memory": true,
+    "profile_cpu": true
+  },
+  "quality": {
+    "scenarios": [
+      "replicated_3_moderate",
+      "replicated_3_severe",
+      "multi_pool_complex"
+    ],
+    "analyze_convergence": true,
+    "analyze_stability": false
+  },
+  "scalability": {
+    "enabled": true,
+    "scales": [
+      {"osds": 10, "pgs": 100},
+      {"osds": 50, "pgs": 1000},
+      {"osds": 100, "pgs": 5000},
+      {"osds": 250, "pgs": 12500},
+      {"osds": 500, "pgs": 25000}
+    ]
+  },
+  "stability": {
+    "enabled": false,
+    "num_runs": 10,
+    "scenarios": [
+      "small_quick"
+    ]
+  },
+  "regression": {
+    "baseline": "./baseline_results.json",
+    "threshold": 0.10
+  },
+  "reporting": {
+    "generate_html": true,
+    "generate_json": true,
+    "detailed_terminal": false
+  }
+}

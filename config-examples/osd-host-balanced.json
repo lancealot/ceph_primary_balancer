@@ -1,0 +1,33 @@
+{
+  "$schema": "https://docs.ceph.com/schemas/ceph-primary-balancer-config-v1.2.json",
+  "description": "OSD+HOST optimization - balanced strategy (~1.7× faster than Full 3D), ideal for multi-host clusters without pool concerns",
+  "optimization": {
+    "target_cv": 0.10,
+    "max_changes": null,
+    "max_iterations": 10000,
+    "enabled_levels": ["osd", "host"]
+  },
+  "scoring": {
+    "weights": {
+      "osd": 0.6,
+      "host": 0.4,
+      "pool": 0.0
+    }
+  },
+  "output": {
+    "directory": null,
+    "json_export": true,
+    "markdown_report": true,
+    "script_name": "rebalance_primaries.sh"
+  },
+  "script": {
+    "batch_size": 50,
+    "health_check": true,
+    "generate_rollback": true,
+    "organized_by_pool": false
+  },
+  "verbosity": {
+    "verbose": false,
+    "quiet": false
+  }
+}

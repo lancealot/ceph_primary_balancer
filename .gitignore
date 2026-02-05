@@ -68,3 +68,5 @@ tests/fixtures/*/reports/
 !RELEASE-NOTES*.md
 !docs/*.md
 !plans/*.md
+!config-examples/*.json
+!config-examples/*.md
