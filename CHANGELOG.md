@@ -7,7 +7,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 > **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
 
 ## [Unreleased]
-- Future enhancements TBD
+
+### Added
+- **Phase 7.1 Planning:** Complete implementation plan for dynamic weight optimization ([plans/phase7.1-dynamic-weights.md](plans/phase7.1-dynamic-weights.md))
+  - Three mathematical strategies: CV-Proportional, Target-Distance, and Adaptive-Hybrid
+  - Expected 24% speedup and 7-8% better final CV quality
+  - Universal applicability across all Phase 7 algorithms
+  - Full architecture design with DynamicScorer class
+  - 5-week sprint plan with detailed success criteria
+  
+- **Test Utilities:** Production cluster optimization test harness
+  - `tests/run_production_optimization.py` - Run CLI with fixture data without live cluster
+  - `tests/run_optimization_comparison.sh` - Multi-strategy comparison suite (11 strategies)
+  - `tests/generate_comparison_summary.py` - Results analysis and summary generation tool
+  - Enables reproducible benchmarking for Phase 7.1 validation
+  
+- **Production Benchmarks:** Comprehensive strategy comparison on 840-OSD cluster
+  - Validated 11 different weight configurations
+  - Identified optimal strategies: POOL-Focused (15.62% CV), OSD-Heavy (15.82% CV)
+  - Established baseline: Fixed default weights achieve 17.10% CV
+  - Proved dynamic weights potential: 24% faster, 7.6% better CV
+
+### Research
+- Analyzed impact of weight configurations on optimization quality
+- Discovered severe imbalance focuses in production data: OSD CV 40.63% vs Host CV 9.51%
+- Proved fixed weights waste 30% of effort on already-balanced dimensions (hosts)
+- Validated mathematical foundation for dynamic weight adaptation
+- Established that dynamic weights benefit ALL optimization algorithms (greedy, batch, tabu, SA)
 
 ## [1.2.0] - 2026-02-05 - Configurable Optimization Levels 🎚️
 
