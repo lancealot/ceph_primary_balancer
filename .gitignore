@@ -57,6 +57,7 @@ rebalance*.sh
 
 # Benchmark results
 benchmark_results/
+optimization_comparison_results/
 
 # Production cluster data and test outputs
 tests/fixtures/production_cluster/
