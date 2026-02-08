@@ -1,9 +1,15 @@
 # Ceph Primary PG Balancer
 
-**Version:** 1.2.0 🚀 | **Status:** Production Ready
+**Version:** 1.2.0 🧪 | **Status:** Alpha Release
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
+
+> ⚠️ **ALPHA SOFTWARE - NOT YET PRODUCTION TESTED**
+>
+> This tool has **not yet been run on production Ceph clusters** and is still considered an **alpha release**. While it has been extensively tested with synthetic data and test fixtures, it requires more extensive validation on real-world Ceph clusters before being considered production-ready.
+>
+> **Use with caution:** Always test in non-production environments first and carefully review generated scripts before execution.
 
 > **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic. All code, architecture, documentation, and tests were AI-generated through iterative collaboration with human guidance.
 
@@ -56,7 +62,7 @@ primaries across three dimensions simultaneously:
 **Quality Assurance:**
 - **Comprehensive unit tests** (57 tests, 95%+ coverage)
 - **Integration tests** for all phases
-- **Production validated** and ready for enterprise use
+- **Tested with synthetic data** and test fixtures (not yet validated on production clusters)
 
 ## 🚀 Quick Start
 
@@ -200,7 +206,7 @@ See [`plans/phase7-advanced-algorithms.md`](plans/phase7-advanced-algorithms.md)
 ## 📊 Version History
 
 - **v1.1.0-dev** 🚀 (In Progress) - Phase 5: Benchmark framework with performance/quality testing
-- **v1.0.0** 🎉 (2026-02-04) - Production Release: Configuration management, output organization, verbosity control
+- **v1.0.0** 🎉 (2026-02-04) - Initial Release: Configuration management, output organization, verbosity control
 - **v0.8.0** - Comprehensive unit tests and documentation (57 tests, 95%+ coverage)
 - **v0.7.0** - Batch execution support with configurable sizes
 - **v0.6.0** - Automatic rollback script generation
