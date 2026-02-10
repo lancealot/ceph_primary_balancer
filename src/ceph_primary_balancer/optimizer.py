@@ -271,7 +271,11 @@ def optimize_primaries(
     max_iterations: int = 1000,
     scorer: Optional[Scorer] = None,
     pool_filter: Optional[int] = None,
-    enabled_levels: Optional[List[str]] = None
+    enabled_levels: Optional[List[str]] = None,
+    dynamic_weights: bool = False,
+    dynamic_strategy: str = 'target_distance',
+    weight_update_interval: int = 10,
+    strategy_params: Optional[dict] = None
 ) -> List[SwapProposal]:
     """
     Main greedy algorithm loop to find all beneficial swaps.
@@ -289,14 +293,22 @@ def optimize_primaries(
     optimization dimensions (OSD, HOST, POOL) for performance optimization and
     targeted balancing strategies.
     
+    Phase 7.1 Update: Added dynamic weight adaptation that automatically adjusts
+    optimization priorities based on current cluster state for faster convergence
+    and better final balance.
+    
     Args:
         state: ClusterState to optimize (modified in place)
         target_cv: Target coefficient of variation for OSD level (default: 0.10 = 10%)
         max_iterations: Maximum number of iterations (default: 1000)
-        scorer: Optional Scorer instance. If None, creates one based on enabled_levels
+        scorer: Optional Scorer instance. If None, creates one based on parameters
         pool_filter: Optional pool_id to only optimize PGs from that specific pool
         enabled_levels: Optional list of enabled optimization levels ['osd', 'host', 'pool'].
                        If None, all levels are enabled (default behavior).
+        dynamic_weights: Enable dynamic weight adaptation (default: False)
+        dynamic_strategy: Weight strategy ('proportional', 'target_distance', default: 'target_distance')
+        weight_update_interval: How often to recalculate weights in iterations (default: 10)
+        strategy_params: Optional parameters for weight strategy (e.g., {'min_weight': 0.10})
         
     Returns:
         List of all SwapProposal objects applied (empty list if no swaps possible)
@@ -313,7 +325,20 @@ def optimize_primaries(
     
     # Use default scorer if none provided
     if scorer is None:
-        if enabled_levels:
+        if dynamic_weights:
+            # Phase 7.1: Use DynamicScorer for adaptive weight optimization
+            from .dynamic_scorer import DynamicScorer
+            
+            scorer = DynamicScorer(
+                strategy=dynamic_strategy,
+                target_cv=target_cv,
+                update_interval=weight_update_interval,
+                strategy_params=strategy_params or {},
+                enabled_levels=enabled_levels
+            )
+            print(f"Dynamic weights enabled: {dynamic_strategy} strategy")
+            print(f"Weight updates every {weight_update_interval} iterations")
+        elif enabled_levels:
             # Auto-adjust weights based on enabled levels
             num_levels = len(enabled_levels)
             weight = 1.0 / num_levels
@@ -335,7 +360,10 @@ def optimize_primaries(
     # Print optimization strategy
     levels_str = ', '.join(scorer.get_enabled_levels()).upper()
     print(f"Optimization strategy: {levels_str}")
-    print(f"Weights: OSD={scorer.w_osd:.2f}, HOST={scorer.w_host:.2f}, POOL={scorer.w_pool:.2f}")
+    if not dynamic_weights:
+        print(f"Weights: OSD={scorer.w_osd:.2f}, HOST={scorer.w_host:.2f}, POOL={scorer.w_pool:.2f}")
+    else:
+        print(f"Initial weights: OSD={scorer.w_osd:.2f}, HOST={scorer.w_host:.2f}, POOL={scorer.w_pool:.2f}")
     
     # If pool filtering is enabled, print info
     if pool_filter is not None:
@@ -408,5 +436,25 @@ def optimize_primaries(
                     pool_cv_str = f", Avg Pool CV = {avg_pool_cv:.2%}"
             
             print(f"Iteration {iteration}: OSD CV = {stats.cv:.2%}{host_cv_str}{pool_cv_str}, Swaps = {len(swaps)}")
+    
+    # Phase 7.1: Print weight evolution summary if dynamic weights were used
+    if dynamic_weights and hasattr(scorer, 'get_weight_history'):
+        print("\n=== Dynamic Weight Evolution ===")
+        weight_history = scorer.get_weight_history()
+        
+        if weight_history:
+            # Show initial, mid, and final weights
+            indices = [0]
+            if len(weight_history) > 2:
+                indices.append(len(weight_history) // 2)
+            if len(weight_history) > 1:
+                indices.append(len(weight_history) - 1)
+            
+            for idx in indices:
+                w = weight_history[idx]
+                iter_num = idx * weight_update_interval
+                print(f"  Iteration {iter_num:3d}: OSD={w[0]:.3f}, Host={w[1]:.3f}, Pool={w[2]:.3f}")
+            
+            print(f"Total weight updates: {len(weight_history)}")
     
     return swaps

@@ -1,0 +1,42 @@
+{
+  "_comment": "Example configuration for Phase 7.1 Dynamic Weight Optimization",
+  "_description": "This configuration enables dynamic weight adaptation for faster convergence and better balance",
+  
+  "optimization": {
+    "target_cv": 0.10,
+    "max_iterations": 1000,
+    "max_changes": null,
+    
+    "_phase_7_1": "Dynamic weight adaptation parameters",
+    "dynamic_weights": true,
+    "dynamic_strategy": "target_distance",
+    "weight_update_interval": 10
+  },
+  
+  "scoring": {
+    "_comment": "Initial weights (will adapt dynamically if dynamic_weights enabled)",
+    "weights": {
+      "osd": 0.5,
+      "host": 0.3,
+      "pool": 0.2
+    }
+  },
+  
+  "script": {
+    "batch_size": 50,
+    "include_rollback": true
+  },
+  
+  "_strategies": {
+    "_comment": "Available dynamic weight strategies",
+    "proportional": "Weights dimensions proportionally to their CV values",
+    "target_distance": "Focus on dimensions above target (recommended)"
+  },
+  
+  "_recommendations": {
+    "default": "Use target_distance strategy with update_interval=10",
+    "fast_convergence": "Use target_distance strategy with update_interval=5",
+    "stable": "Use target_distance strategy with update_interval=20",
+    "disabled": "Set dynamic_weights=false to use fixed weights"
+  }
+}

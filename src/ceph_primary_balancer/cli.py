@@ -224,6 +224,34 @@ def main():
         help='List available optimization strategies with descriptions and exit (Phase 6.5)'
     )
     
+    # Phase 7.1: Dynamic weight adaptation
+    parser.add_argument(
+        '--dynamic-weights',
+        action='store_true',
+        help='Enable dynamic weight adaptation based on cluster state (Phase 7.1). '
+             'Automatically adjusts optimization priorities for faster convergence and better results.'
+    )
+    
+    parser.add_argument(
+        '--dynamic-strategy',
+        type=str,
+        default='target_distance',
+        choices=['proportional', 'target_distance', 'adaptive_hybrid'],
+        help='Dynamic weight strategy (default: target_distance). '
+             'Only used if --dynamic-weights is enabled. '
+             'target_distance: Focus on dimensions above target (recommended). '
+             'proportional: Weight proportionally to CV values. '
+             'adaptive_hybrid: Advanced strategy with improvement tracking and smoothing.'
+    )
+    
+    parser.add_argument(
+        '--weight-update-interval',
+        type=int,
+        default=10,
+        help='How often to recalculate dynamic weights in iterations (default: 10). '
+             'Only used if --dynamic-weights is enabled.'
+    )
+    
     args = parser.parse_args()
     
     # Handle --list-optimization-strategies flag
@@ -279,6 +307,16 @@ def main():
     
     if args.batch_size == 50:  # Default value
         args.batch_size = config.get('script.batch_size', 50)
+    
+    # Phase 7.1: Dynamic weights config support
+    if not args.dynamic_weights:  # Not set via CLI
+        args.dynamic_weights = config.get('optimization.dynamic_weights', False)
+    
+    if args.dynamic_strategy == 'target_distance':  # Default value
+        args.dynamic_strategy = config.get('optimization.dynamic_strategy', 'target_distance')
+    
+    if args.weight_update_interval == 10:  # Default value
+        args.weight_update_interval = config.get('optimization.weight_update_interval', 10)
     
     # Handle output directory (v1.0.0)
     if args.output_dir:
@@ -461,7 +499,10 @@ def main():
         args.target_cv,
         scorer=scorer,
         pool_filter=args.pool,
-        enabled_levels=enabled_levels
+        enabled_levels=enabled_levels,
+        dynamic_weights=args.dynamic_weights,
+        dynamic_strategy=args.dynamic_strategy,
+        weight_update_interval=args.weight_update_interval
     )
     
     # Step 5: Handle case where no swaps were found

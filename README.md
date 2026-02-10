@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 1.2.0 🧪 | **Status:** Alpha Release
+**Version:** 1.3.0-dev 🧪 | **Status:** Alpha Release (Phase 7.1: 90% Complete)
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -25,15 +25,26 @@ primaries across three dimensions simultaneously:
 
 ## ✨ Features
 
+### 🆕 In Development: v1.3.0 (Phase 7.1 - 90% Complete)
+**Dynamic Weight Optimization:**
+- **Adaptive weight adjustment** - Automatically prioritizes dimensions that need it most
+- **Three weight strategies:**
+  - **Proportional** - Simple CV-proportional weighting
+  - **Target Distance** - Focus on dimensions above target (default)
+  - **Adaptive Hybrid** - Advanced strategy with improvement tracking and smoothing
+- **Expected benefits:** 15-25% faster convergence, 6-8% better final CV
+- **Zero overhead** when disabled (opt-in via `--dynamic-weights`)
+- **Full configuration support** via CLI and config files
+
 ### ✅ Current Release v1.2.0
 **Core Optimization:**
 - **Multi-dimensional optimization** with configurable weights
-- **Configurable optimization levels** (NEW in v1.2.0) - Enable/disable specific dimensions
+- **Configurable optimization levels** - Enable/disable specific dimensions
 - **Host topology awareness** and balancing
 - **Pool-specific filtering** and optimization
 - Zero data movement (metadata only)
 
-**Optimization Strategies (NEW in v1.2.0):**
+**Optimization Strategies:**
 - **OSD-only** - Fastest (~3× speedup), ideal for quick fixes
 - **OSD+HOST** - Balanced (~1.7× speedup), best for multi-host clusters
 - **HOST+POOL** - Network-focused (~2.5× speedup)
@@ -77,6 +88,9 @@ python3 -m ceph_primary_balancer.cli --dry-run
 
 # Generate rebalancing script
 python3 -m ceph_primary_balancer.cli --output ./rebalance.sh
+
+# NEW: Use dynamic weight optimization (Phase 7.1)
+python3 -m ceph_primary_balancer.cli --dynamic-weights --output ./rebalance.sh
 
 # Review and apply
 cat ./rebalance.sh

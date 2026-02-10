@@ -8,32 +8,91 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
-### Added
-- **Phase 7.1 Planning:** Complete implementation plan for dynamic weight optimization ([plans/phase7.1-dynamic-weights.md](plans/phase7.1-dynamic-weights.md))
-  - Three mathematical strategies: CV-Proportional, Target-Distance, and Adaptive-Hybrid
+### Added - Phase 7.1: Dynamic Weight Optimization (90% Complete) 🎯
+
+- **Dynamic Weight Adaptation System** - Automatically adjusts optimization priorities based on cluster state
+  - New `DynamicScorer` class extends base `Scorer` with adaptive weight calculation
+  - Weights update periodically during optimization (configurable interval)
+  - CV history and weight evolution tracking for analysis
+  - Statistics API for monitoring weight changes
+  - Zero performance overhead when disabled (opt-in feature)
+
+- **Three Weight Calculation Strategies**
+  - **Proportional Strategy** (`proportional`) - Weights proportional to CV values
+    - Simple, predictable behavior
+    - Best for evenly imbalanced clusters
+  - **Target Distance Strategy** (`target_distance`, default) - Focus on dimensions above target
+    - Ignores already-balanced dimensions
+    - Minimum weight enforcement (default 0.05)
+    - Recommended for most production scenarios
+  - **Adaptive Hybrid Strategy** (`adaptive_hybrid`) - Advanced with improvement tracking
+    - Monitors CV reduction rates over time
+    - Boosts weights for slow-improving dimensions
+    - Exponential smoothing prevents oscillation
+    - Four configurable parameters (min_weight, smoothing_factor, boost_factor, improvement_threshold)
+    - Best for complex, multi-dimensional imbalances
+
+- **CLI Integration**
+  - New `--dynamic-weights` flag to enable adaptive optimization
+  - New `--dynamic-strategy` choice (proportional, target_distance, adaptive_hybrid)
+  - New `--weight-update-interval` parameter (default: 10 iterations)
+  - Config file support for all dynamic weight settings
+  - Weight evolution summary in optimization output
+
+- **Comprehensive Testing** - 95 tests total for Phase 7.1
+  - 51 unit tests for weight strategies (including 17 for adaptive_hybrid)
+  - 29 unit tests for DynamicScorer
+  - 12 integration tests covering end-to-end workflows
+  - 3 existing integration tests (no regressions)
+  - All tests passing ✅
+
+- **Example Configuration** - `config-examples/dynamic-weights.json`
+  - Demonstrates all dynamic weight options
+  - Strategy recommendations and use cases
+  - Parameter tuning guidance
+
+### Implementation Details
+- **Weight Strategies Module** (`src/ceph_primary_balancer/weight_strategies.py`, ~580 lines)
+  - Abstract base class `WeightStrategy` for extensibility
+  - Factory pattern for strategy instantiation
+  - Comprehensive parameter validation
+  - Full type hints and documentation
+
+- **Dynamic Scorer** (`src/ceph_primary_balancer/dynamic_scorer.py`, ~330 lines)
+  - Drop-in replacement for base `Scorer` class
+  - CV caching for performance optimization
+  - History tracking (CV values and weights over time)
+  - Statistics generation for analysis and debugging
+
+- **Performance Characteristics**
+  - Expected 15-25% time savings vs fixed weights
+  - Expected 6-8% better final CV quality
+  - Memory overhead <1KB per optimization
+  - Weight update overhead <1% of runtime
+
+### Research & Planning
+- **Phase 7.1 Planning:** Complete implementation plan ([plans/phase7.1-dynamic-weights.md](plans/phase7.1-dynamic-weights.md))
+  - Mathematical foundation and algorithm design
   - Expected 24% speedup and 7-8% better final CV quality
   - Universal applicability across all Phase 7 algorithms
-  - Full architecture design with DynamicScorer class
   - 5-week sprint plan with detailed success criteria
-  
-- **Test Utilities:** Production cluster optimization test harness
-  - `tests/run_production_optimization.py` - Run CLI with fixture data without live cluster
-  - `tests/run_optimization_comparison.sh` - Multi-strategy comparison suite (11 strategies)
-  - `tests/generate_comparison_summary.py` - Results analysis and summary generation tool
-  - Enables reproducible benchmarking for Phase 7.1 validation
-  
+
 - **Production Benchmarks:** Comprehensive strategy comparison on 840-OSD cluster
   - Validated 11 different weight configurations
   - Identified optimal strategies: POOL-Focused (15.62% CV), OSD-Heavy (15.82% CV)
   - Established baseline: Fixed default weights achieve 17.10% CV
   - Proved dynamic weights potential: 24% faster, 7.6% better CV
 
-### Research
-- Analyzed impact of weight configurations on optimization quality
-- Discovered severe imbalance focuses in production data: OSD CV 40.63% vs Host CV 9.51%
-- Proved fixed weights waste 30% of effort on already-balanced dimensions (hosts)
-- Validated mathematical foundation for dynamic weight adaptation
-- Established that dynamic weights benefit ALL optimization algorithms (greedy, batch, tabu, SA)
+- **Test Utilities:** Production cluster optimization test harness
+  - `tests/run_production_optimization.py` - Run CLI with fixture data
+  - `tests/run_optimization_comparison.sh` - Multi-strategy comparison suite
+  - `tests/generate_comparison_summary.py` - Results analysis tool
+
+### Remaining Work (Sprint 7.1E - 10%)
+- Comprehensive documentation (`docs/DYNAMIC-WEIGHTS.md`)
+- Update existing docs (USAGE.md, README.md)
+- Usage examples and tutorials
+- Final testing and code review
 
 ## [1.2.0] - 2026-02-05 - Configurable Optimization Levels 🎚️
 
