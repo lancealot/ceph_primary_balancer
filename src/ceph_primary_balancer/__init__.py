@@ -17,8 +17,10 @@ Version History:
 - v1.0.0: Phase 4 Sprint 3 Complete - Configuration management and production release
 - v1.1.0: Phase 5 Complete - Comprehensive benchmark framework
 - v1.2.0: Phase 6.5 Complete - Configurable optimization levels
+- v1.3.0: Dynamic weight optimization with adaptive strategies
+- v1.4.0: Advanced optimization algorithms (Greedy, Batch Greedy, Tabu Search, Simulated Annealing)
 
-Production Features (v1.2.0):
+Production Features (v1.4.0):
 ✅ Multi-dimensional optimization (OSD, Host, Pool levels)
 ✅ Configurable optimization levels (enable/disable dimensions for performance tuning)
 ✅ Strategy selection (OSD-only, OSD+HOST, OSD+POOL, HOST+POOL, Full-3D)
@@ -31,9 +33,12 @@ Production Features (v1.2.0):
 ✅ Enhanced reporting (JSON export, markdown reports)
 ✅ Example configurations for common use cases
 ✅ Benchmark framework (performance, quality, scalability testing)
+✅ Advanced optimization algorithms (greedy, batch_greedy, tabu_search, simulated_annealing)
+✅ Algorithm registry with dynamic selection
+✅ Deterministic optimization with configurable parameters
 """
 
-__version__ = "1.2.0"
+__version__ = "1.4.0"
 
 # Package-level imports will be added as modules are implemented
 __all__ = ["__version__"]

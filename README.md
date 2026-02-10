@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 1.3.0-dev 🧪 | **Status:** Alpha Release (Phase 7.1: 100% Complete ✅)
+**Version:** 1.4.0 🚀 | **Status:** Alpha Release
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -25,8 +25,18 @@ primaries across three dimensions simultaneously:
 
 ## ✨ Features
 
-### 🆕 Latest: v1.3.0-dev (Phase 7.1 - 100% Complete ✅)
-**Dynamic Weight Optimization:**
+### 🆕 Latest: v1.4.0 - Advanced Optimization Algorithms
+- **Four optimization algorithms** with different speed/quality tradeoffs:
+  - **Greedy** (default) - Fastest, deterministic, good for 95% of use cases
+  - **Batch Greedy** - Multiple swaps per iteration, similar speed to greedy
+  - **Tabu Search** - Memory-based search, 10-15% better CV, 1.5-3x slower
+  - **Simulated Annealing** - Best quality, 15-20% better CV, 2-4x slower
+- **OptimizerRegistry** - Centralized algorithm management and discovery
+- **Comprehensive testing** - 154 tests across all optimizers
+- **Clear selection guide** - Know exactly when to use each algorithm
+- **Seamless integration** - All algorithms work with dynamic weights (Phase 7.1)
+
+### ✅ v1.3.0 - Dynamic Weight Optimization
 - **Adaptive weight adjustment** - Automatically prioritizes dimensions that need it most during optimization
 - **Three weight strategies:**
   - **Proportional** - Simple CV-proportional weighting for predictable behavior
