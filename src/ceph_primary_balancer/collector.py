@@ -16,7 +16,7 @@ Functions:
 import subprocess
 import json
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 from .models import PGInfo, OSDInfo, HostInfo, PoolInfo, ClusterState
 
@@ -230,7 +230,7 @@ def collect_pool_data() -> Dict[int, PoolInfo]:
     return pools
 
 
-def build_cluster_state() -> ClusterState:
+def build_cluster_state(from_file: Optional[str] = None) -> ClusterState:
     """
     Combine PG, OSD, host, and pool data into a complete ClusterState.
     
@@ -239,40 +239,62 @@ def build_cluster_state() -> ClusterState:
     - Host-level: Aggregated primary_count and total_pg_count for each host
     - Pool-level: Per-pool primary distribution across OSDs (Phase 2)
     
+    Args:
+        from_file: Path to .tar.gz export file for offline mode (None = live cluster)
+        
     Returns:
         ClusterState: Complete cluster state with populated counts at all levels
+        
+    Raises:
+        OfflineExportError: If offline export is invalid (offline mode only)
+        SystemExit: If live cluster connection fails (live mode only)
     """
-    pgs = collect_pg_data()
-    osds, hosts = collect_osd_data()
-    pools = collect_pool_data()
+    if from_file:
+        # Offline mode: Load from export files
+        from . import offline
+        
+        # Extract if not already extracted
+        if from_file.endswith('.tar.gz'):
+            export_dir = offline.extract_export_archive(from_file)
+        else:
+            export_dir = from_file
+        
+        # Load and return cluster state
+        return offline.load_from_export_files(export_dir)
     
-    # Calculate primary_count and total_pg_count for each OSD
-    for pg_info in pgs.values():
-        # Count primary assignments (first OSD in acting set)
-        primary_osd = pg_info.primary
-        if primary_osd in osds:
-            osds[primary_osd].primary_count += 1
+    else:
+        # Live mode: Existing collection logic
+        pgs = collect_pg_data()
+        osds, hosts = collect_osd_data()
+        pools = collect_pool_data()
         
-        # Count total PG assignments (all OSDs in acting set)
-        for osd_id in pg_info.acting:
-            if osd_id in osds:
-                osds[osd_id].total_pg_count += 1
-        
-        # Count per-pool primary assignments (Phase 2)
-        pool_id = pg_info.pool_id
-        if pool_id in pools:
-            # Increment PG count for this pool
-            pools[pool_id].pg_count += 1
+        # Calculate primary_count and total_pg_count for each OSD
+        for pg_info in pgs.values():
+            # Count primary assignments (first OSD in acting set)
+            primary_osd = pg_info.primary
+            if primary_osd in osds:
+                osds[primary_osd].primary_count += 1
             
-            # Track primary count per OSD for this pool
-            if primary_osd not in pools[pool_id].primary_counts:
-                pools[pool_id].primary_counts[primary_osd] = 0
-            pools[pool_id].primary_counts[primary_osd] += 1
-    
-    # Aggregate counts at host level
-    for osd_info in osds.values():
-        if osd_info.host and osd_info.host in hosts:
-            hosts[osd_info.host].primary_count += osd_info.primary_count
-            hosts[osd_info.host].total_pg_count += osd_info.total_pg_count
-    
-    return ClusterState(pgs=pgs, osds=osds, hosts=hosts, pools=pools)
+            # Count total PG assignments (all OSDs in acting set)
+            for osd_id in pg_info.acting:
+                if osd_id in osds:
+                    osds[osd_id].total_pg_count += 1
+            
+            # Count per-pool primary assignments (Phase 2)
+            pool_id = pg_info.pool_id
+            if pool_id in pools:
+                # Increment PG count for this pool
+                pools[pool_id].pg_count += 1
+                
+                # Track primary count per OSD for this pool
+                if primary_osd not in pools[pool_id].primary_counts:
+                    pools[pool_id].primary_counts[primary_osd] = 0
+                pools[pool_id].primary_counts[primary_osd] += 1
+        
+        # Aggregate counts at host level
+        for osd_info in osds.values():
+            if osd_info.host and osd_info.host in hosts:
+                hosts[osd_info.host].primary_count += osd_info.primary_count
+                hosts[osd_info.host].total_pg_count += osd_info.total_pg_count
+        
+        return ClusterState(pgs=pgs, osds=osds, hosts=hosts, pools=pools)

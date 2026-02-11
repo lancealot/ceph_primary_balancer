@@ -1,6 +1,6 @@
 # Ceph Primary PG Balancer
 
-**Version:** 1.4.0 🚀 | **Status:** Alpha Release
+**Version:** 1.5.0 🚀 | **Status:** Alpha Release
 
 Analyze and optimize primary Placement Group distribution across your Ceph cluster
 with multi-dimensional balancing (OSD + Host + Pool).
@@ -25,7 +25,18 @@ primaries across three dimensions simultaneously:
 
 ## ✨ Features
 
-### 🆕 Latest: v1.4.0 - Advanced Optimization Algorithms
+### 🆕 Latest: v1.5.0 - Offline Mode for Air-Gapped Environments
+- **Export/Analyze/Execute workflow** for environments without direct cluster access
+- **Air-gapped security support** - Complete network isolation maintained
+- **Export script** - One-command cluster data export ([`scripts/ceph-export-cluster-data.sh`](scripts/ceph-export-cluster-data.sh))
+- **Offline analysis** - Full CLI functionality without cluster credentials
+- **All features supported** - Configuration files, dynamic weights, advanced algorithms
+- **Export age warnings** - Automatically warns about stale data (>7 days)
+- **Manual health verification** - Safe execution with required health checks
+- **Complete documentation** - Comprehensive guide in [`docs/OFFLINE-MODE.md`](docs/OFFLINE-MODE.md)
+- **30 new tests** - Full coverage for offline functionality
+
+### ✅ v1.4.0 - Advanced Optimization Algorithms
 - **Four optimization algorithms** with different speed/quality tradeoffs:
   - **Greedy** (default) - Fastest, deterministic, good for 95% of use cases
   - **Batch Greedy** - Multiple swaps per iteration, similar speed to greedy
@@ -92,7 +103,7 @@ primaries across three dimensions simultaneously:
 
 ## 🚀 Quick Start
 
-### Basic Usage
+### Basic Usage (Live Cluster Access)
 
 ```bash
 # Install dependencies (Python 3.8+ required)
@@ -104,7 +115,7 @@ python3 -m ceph_primary_balancer.cli --dry-run
 # Generate rebalancing script
 python3 -m ceph_primary_balancer.cli --output ./rebalance.sh
 
-# NEW in v1.3.0: Use dynamic weight optimization (Phase 7.1)
+# Use dynamic weight optimization (v1.3.0)
 python3 -m ceph_primary_balancer.cli --dynamic-weights --output ./rebalance.sh
 
 # With specific strategy
@@ -120,6 +131,37 @@ python3 -m ceph_primary_balancer.cli --config config-examples/dynamic-weights.js
 cat ./rebalance.sh
 ./rebalance.sh
 ```
+
+### Offline Mode (Air-Gapped Environments) - NEW in v1.5.0
+
+Perfect for high-security environments or when cluster access isn't available:
+
+```bash
+# Step 1: On cluster - Export data (requires Ceph CLI access)
+./scripts/ceph-export-cluster-data.sh
+# Creates: ceph-cluster-export-YYYYMMDD_HHMMSS.tar.gz
+
+# Step 2: Transfer export file to analysis system (USB, secure copy, etc.)
+
+# Step 3: On analysis system - Analyze offline (no cluster access needed!)
+python3 -m ceph_primary_balancer.cli \
+  --from-file ceph-cluster-export-20260211_093022.tar.gz \
+  --output rebalance.sh \
+  --max-changes 100
+
+# All features work offline:
+python3 -m ceph_primary_balancer.cli \
+  --from-file export.tar.gz \
+  --dynamic-weights \
+  --algorithm simulated_annealing \
+  --config balanced.json \
+  --output rebalance.sh
+
+# Step 4: Transfer scripts back to cluster and execute
+./rebalance.sh  # Includes manual health verification
+```
+
+See [`docs/OFFLINE-MODE.md`](docs/OFFLINE-MODE.md) for complete offline mode documentation.
 
 ### Using Configuration Files (v1.0.0)
 

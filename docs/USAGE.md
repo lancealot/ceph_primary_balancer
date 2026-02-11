@@ -170,6 +170,95 @@ Continue to next batch? [Y/n]
 
 ---
 
+## Offline Mode for Air-Gapped Environments (v1.5.0+)
+
+### Overview
+
+Offline mode enables cluster analysis and optimization without direct cluster access. This is essential for:
+- **Air-gapped security environments** with network isolation
+- **Analysis workstations** without cluster credentials
+- **Vendor support** scenarios
+- **Historical analysis** and trend tracking
+
+### Quick Start
+
+**Step 1: Export cluster data (on cluster with Ceph access):**
+
+```bash
+./scripts/ceph-export-cluster-data.sh
+# Creates: ceph-cluster-export-YYYYMMDD_HHMMSS.tar.gz
+```
+
+**Step 2: Transfer export to analysis system** (USB, secure copy, etc.)
+
+**Step 3: Analyze offline (no cluster access needed):**
+
+```bash
+# Dry run analysis
+python3 -m ceph_primary_balancer.cli \
+  --from-file ceph-cluster-export-20260211_093022.tar.gz \
+  --dry-run
+
+# Generate optimization scripts
+python3 -m ceph_primary_balancer.cli \
+  --from-file ceph-cluster-export-20260211_093022.tar.gz \
+  --output rebalance.sh \
+  --max-changes 100
+```
+
+**Step 4: Transfer scripts back and execute:**
+
+```bash
+./rebalance.sh  # Includes manual health verification
+```
+
+### All CLI Features Work Offline
+
+```bash
+# With configuration files
+python3 -m ceph_primary_balancer.cli \
+  --from-file export.tar.gz \
+  --config balanced.json \
+  --output rebalance.sh
+
+# With custom weights
+python3 -m ceph_primary_balancer.cli \
+  --from-file export.tar.gz \
+  --weight-osd 0.7 \
+  --weight-host 0.3 \
+  --max-changes 50
+
+# With dynamic weights
+python3 -m ceph_primary_balancer.cli \
+  --from-file export.tar.gz \
+  --dynamic-weights \
+  --output rebalance.sh
+
+# With advanced algorithms
+python3 -m ceph_primary_balancer.cli \
+  --from-file export.tar.gz \
+  --algorithm simulated_annealing \
+  --output rebalance.sh
+```
+
+### Safety Features
+
+- **Export age warnings**: Automatically warns if export is >7 days old
+- **Manual health verification**: Scripts require manual cluster health check before execution
+- **Offline mode indicators**: Clear warnings in generated scripts
+- **Full rollback support**: Rollback scripts always generated
+
+### Complete Documentation
+
+See [OFFLINE-MODE.md](OFFLINE-MODE.md) for comprehensive documentation including:
+- Complete workflow details
+- Export archive contents
+- Best practices and recommendations
+- Troubleshooting guide
+- Security considerations
+
+---
+
 ## Dynamic Weight Optimization (v1.3.0+)
 
 ### Overview

@@ -11,12 +11,18 @@ Also includes rollback script generation for safely reversing changes.
 import os
 import sys
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from .models import SwapProposal
 
 
-def generate_script(swaps: List[SwapProposal], output_path: str, batch_size: int = 50):
+def generate_script(
+    swaps: List[SwapProposal],
+    output_path: str,
+    batch_size: int = 50,
+    offline_mode: bool = False,
+    export_metadata: Optional[Dict] = None
+):
     """
     Generate an executable bash script that applies primary reassignments.
     
@@ -27,11 +33,14 @@ def generate_script(swaps: List[SwapProposal], output_path: str, batch_size: int
     - Progress tracking with formatted output per batch
     - Error handling and failure counting
     - Summary of successful and failed operations
+    - Offline mode warnings and manual verification (v1.5.0+)
     
     Args:
         swaps: List of SwapProposal objects containing primary reassignments
         output_path: Path where the script should be written
         batch_size: Number of commands to execute per batch (default: 50)
+        offline_mode: True if generated from offline export (adds warnings, v1.5.0)
+        export_metadata: Metadata from offline export (if offline_mode=True, v1.5.0)
     
     Raises:
         SystemExit: Exits with code 1 if swaps list is empty or file write fails
@@ -66,11 +75,54 @@ def generate_script(swaps: List[SwapProposal], output_path: str, batch_size: int
 # Total commands: {total_commands}
 # Batch size: {batch_size}
 # Number of batches: {num_batches}
-
+'''
+    
+    # Add offline mode warning if applicable
+    if offline_mode:
+        export_date = export_metadata.get('export_date_local', 'unknown') if export_metadata else 'unknown'
+        export_host = export_metadata.get('export_hostname', 'unknown') if export_metadata else 'unknown'
+        
+        script_content += f'''
+#
+# ⚠️  OFFLINE MODE WARNING ⚠️
+# This script was generated from an offline cluster snapshot.
+#
+# Export Date: {export_date}
+# Export Source: {export_host}
+#
+# IMPORTANT: This script assumes the cluster state has NOT changed since export.
+# If OSDs have been added/removed or PGs have moved, commands may fail.
+# Carefully review cluster state before execution!
+#
+'''
+    
+    script_content += '''
 set -e
 
 echo "This script will execute {total_commands} pg-upmap-primary commands in {num_batches} batch(es)."
 echo "Batch size: {batch_size} commands per batch"
+'''.format(total_commands=total_commands, num_batches=num_batches, batch_size=batch_size)
+    
+    # Add health check or manual verification prompt based on mode
+    if offline_mode:
+        script_content += '''
+echo ""
+echo "⚠️  OFFLINE MODE: Manual health verification required"
+echo ""
+echo "This script was generated from an offline export."
+echo "Please verify the cluster is healthy and in the expected state:"
+echo ""
+echo "  1. Run: ceph health"
+echo "  2. Run: ceph -s"
+echo "  3. Verify OSDs match the export (check OSD count and IDs)"
+echo "  4. Verify PGs are active+clean"
+echo ""
+read -p "Cluster is healthy and matches export snapshot? [y/N] " confirm
+[[ "$confirm" =~ ^[Yy]$ ]] || exit 1
+'''
+    else:
+        # Existing automatic health check for live mode
+        script_content += '''
 read -p "Continue? [y/N] " confirm
 [[ "$confirm" =~ ^[Yy]$ ]] || exit 1
 
@@ -85,6 +137,9 @@ if [[ ! "$HEALTH" =~ ^HEALTH_OK ]] && [[ ! "$HEALTH" =~ ^HEALTH_WARN ]]; then
 fi
 echo "Cluster health: $HEALTH"
 echo ""
+'''
+    
+    script_content += '''
 
 TOTAL={total_commands}
 BATCH_SIZE={batch_size}

@@ -106,6 +106,16 @@ def main():
         description='Analyze and optimize Ceph primary PG distribution with three-dimensional balancing'
     )
     
+    # Phase 8: Offline mode support (v1.5.0)
+    parser.add_argument(
+        '--from-file',
+        type=str,
+        default=None,
+        help='Offline mode: Load cluster data from exported .tar.gz file (Phase 8). '
+             'Use this for air-gapped environments where direct cluster access is unavailable. '
+             'Export data using scripts/ceph-export-cluster-data.sh'
+    )
+    
     # Configuration file support (v1.0.0)
     parser.add_argument(
         '--config',
@@ -259,6 +269,51 @@ def main():
         print_optimization_strategies()
         sys.exit(0)
     
+    # Phase 8: Detect and report offline mode
+    offline_mode = args.from_file is not None
+    offline_metadata = None
+    
+    if offline_mode:
+        print("=" * 60)
+        print("OFFLINE MODE")
+        print("=" * 60)
+        print(f"Loading cluster data from: {args.from_file}")
+        print()
+        
+        # Import offline module and load metadata
+        from . import offline
+        
+        try:
+            # Extract archive and load metadata
+            if args.from_file.endswith('.tar.gz'):
+                export_dir = offline.extract_export_archive(args.from_file)
+            else:
+                export_dir = args.from_file
+            
+            # Load and display metadata
+            offline_metadata = offline.load_metadata(export_dir)
+            export_age = offline.calculate_export_age(offline_metadata)
+            
+            print("Export Information:")
+            print(f"  Export Date: {offline_metadata.get('export_date_local', 'unknown')}")
+            print(f"  Export Age: {export_age}")
+            print(f"  Source Host: {offline_metadata.get('export_hostname', 'unknown')}")
+            print(f"  Ceph Version: {offline_metadata.get('ceph_version', 'unknown')}")
+            print(f"  Cluster FSID: {offline_metadata.get('cluster_fsid', 'unknown')}")
+            print()
+            
+            # Warn if export is old
+            if 'days' in export_age:
+                days = int(export_age.split()[0])
+                if days > 7:
+                    print("⚠️  WARNING: Export is more than 7 days old")
+                    print("   Cluster state may have changed significantly")
+                    print()
+            
+        except offline.OfflineExportError as e:
+            print(f"Error loading offline export: {e}")
+            sys.exit(1)
+    
     # Validate verbose/quiet mutual exclusivity
     if args.verbose and args.quiet:
         print("Error: Cannot specify both --verbose and --quiet")
@@ -402,9 +457,13 @@ def main():
     )
     
     # Step 1: Collect cluster data
-    qprint("Collecting cluster data...")
+    if offline_mode:
+        qprint("Loading cluster state from offline export...")
+    else:
+        qprint("Collecting cluster data from live cluster...")
+    
     try:
-        state = collector.build_cluster_state()
+        state = collector.build_cluster_state(from_file=args.from_file if offline_mode else None)
     except Exception as e:
         print(f"Error collecting cluster data: {e}")  # Always print errors
         sys.exit(1)
@@ -635,8 +694,14 @@ def main():
     
     # Step 10: Generate script or report dry-run
     if not args.dry_run:
-        script_generator.generate_script(swaps, args.output, batch_size=args.batch_size)
-        
+        script_generator.generate_script(
+            swaps,
+            args.output,
+            batch_size=args.batch_size,
+            offline_mode=offline_mode,
+            export_metadata=offline_metadata if offline_mode else None
+        )
+
         # Generate rollback script
         rollback_path = script_generator.generate_rollback_script(swaps, args.output)
         

@@ -8,6 +8,121 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-02-11 - Offline Mode for Air-Gapped Environments 🔒
+
+### Added - Offline Mode Support
+
+- **Offline Mode for Air-Gapped Environments** - Complete export/analyze/execute workflow
+  - Export script ([`scripts/ceph-export-cluster-data.sh`](scripts/ceph-export-cluster-data.sh)) for one-command cluster data collection
+  - Offline analysis module ([`src/ceph_primary_balancer/offline.py`](src/ceph_primary_balancer/offline.py)) with archive extraction, validation, and parsing
+  - `--from-file` CLI argument for loading cluster data from exports
+  - Automatic offline mode detection and metadata display
+  - Export age warnings (>7 days triggers strong warning)
+  - Manual health verification prompts in generated scripts (replaces automatic health checks)
+  - Full feature parity - all CLI options work in offline mode
+
+- **Export Archive Contents**
+  - `pg_dump.json` - PG placement data from `ceph pg dump pgs -f json`
+  - `osd_tree.json` - Cluster topology from `ceph osd tree -f json`
+  - `pool_list.json` - Pool information from `ceph osd pool ls detail -f json`
+  - `metadata.json` - Export metadata with timestamps, cluster info, and version
+
+- **Safety Features**
+  - Offline mode warnings in generated scripts
+  - Manual cluster health verification required before execution
+  - Export age tracking and staleness warnings
+  - Complete rollback script generation maintained
+  - Batch execution preserved with all safety features
+
+- **Use Cases**
+  - Air-gapped security environments with network isolation
+  - Analysis workstations without cluster credentials
+  - Vendor support scenarios without granting cluster access
+  - Historical analysis and trend tracking
+
+### Modified
+
+- **CLI** ([`src/ceph_primary_balancer/cli.py`](src/ceph_primary_balancer/cli.py))
+  - Added `--from-file` argument for offline mode
+  - Added offline mode detection and metadata display
+  - Pass offline mode information to script generator
+
+- **Collector** ([`src/ceph_primary_balancer/collector.py`](src/ceph_primary_balancer/collector.py))
+  - Modified [`build_cluster_state()`](src/ceph_primary_balancer/collector.py:233) to accept optional `from_file` parameter
+  - Added offline mode branching - uses offline module when file provided
+  - Preserves all existing live mode functionality
+
+- **Script Generator** ([`src/ceph_primary_balancer/script_generator.py`](src/ceph_primary_balancer/script_generator.py))
+  - Modified [`generate_script()`](src/ceph_primary_balancer/script_generator.py:19) to accept `offline_mode` and `export_metadata` parameters
+  - Added offline mode warning headers to generated scripts
+  - Replaced automatic health checks with manual verification prompts for offline mode
+  - Preserved automatic health checks for live mode
+
+### Documentation
+
+- **New Documentation**
+  - [`docs/OFFLINE-MODE.md`](docs/OFFLINE-MODE.md) - Comprehensive 500+ line guide covering:
+    - Complete workflow with examples
+    - Export process and archive contents
+    - Analysis process with all CLI options
+    - Execution process with safety features
+    - Limitations and best practices
+    - Troubleshooting guide with solutions
+    - Security considerations and recommendations
+
+- **Updated Documentation**
+  - [`docs/USAGE.md`](docs/USAGE.md) - Added offline mode section with quick start examples
+  - [`README.md`](README.md) - Updated features section and quick start with offline examples
+  - Version bumped to 1.5.0 in [`__init__.py`](src/ceph_primary_balancer/__init__.py)
+
+### Testing
+
+- **Unit Tests** ([`tests/test_offline_mode.py`](tests/test_offline_mode.py)) - 21 comprehensive tests
+  - Archive extraction and validation
+  - Export file validation (missing files, invalid JSON)
+  - Metadata loading and age calculation
+  - ClusterState loading from export files
+  - Primary count calculation verification
+  - Host aggregation verification
+  - Pool-level tracking verification
+  - Data parsing functions (PG, OSD tree, pool data)
+
+- **Integration Tests** ([`tests/test_offline_integration.py`](tests/test_offline_integration.py)) - 9 end-to-end tests
+  - Complete offline workflow testing
+  - Collector integration with offline mode
+  - Metadata preservation and age calculation
+  - Primary distribution correctness
+  - Host-level aggregation
+  - Pool-level tracking
+  - Live mode compatibility verification
+  - Export validation (missing files, corrupted JSON)
+
+- **Test Results**
+  - 30 new tests, all passing
+  - Total test count: 184 tests
+  - Offline mode coverage: >90%
+
+### Performance
+
+- **Zero Performance Impact on Live Mode**
+  - Offline module only loaded when `--from-file` is used
+  - No overhead for standard live cluster operations
+  - Same optimization performance as v1.4.0
+
+### Compatibility
+
+- **Backward Compatible**
+  - All existing CLI options and configurations work unchanged
+  - Live mode operation identical to v1.4.0
+  - No breaking changes to any APIs or workflows
+
+- **Requirements**
+  - Export system: Ceph CLI, bash, tar, gzip, Python 3 (for JSON in metadata)
+  - Analysis system: Python 3.8+, no Ceph required
+  - Compatible with all Ceph versions that support JSON output
+
+---
+
 ## [1.4.0] - 2026-02-10 - Advanced Optimization Algorithms 🚀
 
 ### Added - Simulated Annealing Optimizer

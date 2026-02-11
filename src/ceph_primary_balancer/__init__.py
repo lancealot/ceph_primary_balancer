@@ -19,6 +19,7 @@ Version History:
 - v1.2.0: Phase 6.5 Complete - Configurable optimization levels
 - v1.3.0: Dynamic weight optimization with adaptive strategies
 - v1.4.0: Advanced optimization algorithms (Greedy, Batch Greedy, Tabu Search, Simulated Annealing)
+- v1.5.0: Offline mode for air-gapped environments
 
 Production Features (v1.4.0):
 ✅ Multi-dimensional optimization (OSD, Host, Pool levels)
@@ -36,9 +37,10 @@ Production Features (v1.4.0):
 ✅ Advanced optimization algorithms (greedy, batch_greedy, tabu_search, simulated_annealing)
 ✅ Algorithm registry with dynamic selection
 ✅ Deterministic optimization with configurable parameters
+✅ Offline mode for air-gapped environments (export/analyze/execute workflow)
 """
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 # Package-level imports will be added as modules are implemented
 __all__ = ["__version__"]
