@@ -141,6 +141,17 @@ class TestOptimizerBase(unittest.TestCase):
         self.assertEqual(optimizer.scorer.w_host, 0.5)
         self.assertEqual(optimizer.scorer.w_pool, 0.0)
     
+    def test_optimizer_with_dynamic_weights(self):
+        """Test optimizer with dynamic weights enabled."""
+        optimizer = DummyOptimizer(
+            dynamic_weights=True,
+            dynamic_strategy='target_distance'
+        )
+        
+        # Should create DynamicScorer
+        from ceph_primary_balancer.dynamic_scorer import DynamicScorer
+        self.assertIsInstance(optimizer.scorer, DynamicScorer)
+    
     def test_algorithm_name_property(self):
         """Test algorithm_name property."""
         optimizer = DummyOptimizer()
