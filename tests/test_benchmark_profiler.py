@@ -9,7 +9,7 @@ Tests cover:
 """
 
 import unittest
-from src.ceph_primary_balancer.benchmark.profiler import (
+from ceph_primary_balancer.benchmark.profiler import (
     profile_optimization,
     benchmark_scalability,
     estimate_complexity,
@@ -18,8 +18,8 @@ from src.ceph_primary_balancer.benchmark.profiler import (
     MemoryMetrics,
     ScalabilityMetrics
 )
-from src.ceph_primary_balancer.benchmark.generator import generate_synthetic_cluster
-from src.ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.benchmark.generator import generate_synthetic_cluster
+from ceph_primary_balancer.scorer import Scorer
 
 
 class TestPerformanceMetrics(unittest.TestCase):

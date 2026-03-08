@@ -9,8 +9,8 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timezone
 
-from src.ceph_primary_balancer import collector, offline
-from src.ceph_primary_balancer.models import ClusterState
+from ceph_primary_balancer import collector, offline
+from ceph_primary_balancer.models import ClusterState
 
 
 class TestOfflineIntegration(unittest.TestCase):

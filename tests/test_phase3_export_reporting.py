@@ -16,12 +16,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from src.ceph_primary_balancer.models import (
+from ceph_primary_balancer.models import (
     PGInfo, OSDInfo, HostInfo, PoolInfo, ClusterState, SwapProposal, Statistics
 )
-from src.ceph_primary_balancer.exporter import JSONExporter
-from src.ceph_primary_balancer.reporter import Reporter
-from src.ceph_primary_balancer.analyzer import calculate_statistics
+from ceph_primary_balancer.exporter import JSONExporter
+from ceph_primary_balancer.reporter import Reporter
+from ceph_primary_balancer.analyzer import calculate_statistics
 
 
 class TestJSONExporter(unittest.TestCase):

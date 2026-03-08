@@ -328,7 +328,7 @@ class TestHistoryAccess:
         
         weights = scorer.get_current_weights()
         
-        assert weights == (0.6, 0.3, 0.1)
+        assert all(abs(a - b) < 1e-9 for a, b in zip(weights, (0.6, 0.3, 0.1)))
         assert isinstance(weights, tuple)
 
 

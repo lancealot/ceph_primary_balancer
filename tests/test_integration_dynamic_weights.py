@@ -19,12 +19,12 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from typing import List
 
-from src.ceph_primary_balancer import collector, analyzer, cli
-from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
-from src.ceph_primary_balancer.models import ClusterState, SwapProposal
-from src.ceph_primary_balancer.dynamic_scorer import DynamicScorer
-from src.ceph_primary_balancer.scorer import Scorer
-from src.ceph_primary_balancer.config import Config
+from ceph_primary_balancer import collector, analyzer, cli
+from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+from ceph_primary_balancer.models import ClusterState, SwapProposal
+from ceph_primary_balancer.dynamic_scorer import DynamicScorer
+from ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.config import Config
 
 
 class TestDynamicWeightsIntegration(unittest.TestCase):

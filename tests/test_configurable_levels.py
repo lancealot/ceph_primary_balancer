@@ -8,44 +8,40 @@ balancing strategies.
 
 import pytest
 from unittest.mock import patch, MagicMock
-from src.ceph_primary_balancer.config import Config, ConfigError
-from src.ceph_primary_balancer.scorer import Scorer
-from src.ceph_primary_balancer.models import ClusterState, OSD, Host, Pool, PG
+from ceph_primary_balancer.config import Config, ConfigError
+from ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.models import ClusterState, OSDInfo, HostInfo, PoolInfo, PGInfo
 
 
 def create_test_cluster() -> ClusterState:
     """Create a simple test cluster for testing."""
-    state = ClusterState()
-    
+    pgs = {}
+    osds = {}
+    hosts = {}
+    pools = {}
+
     # Create 6 OSDs across 2 hosts
     for i in range(6):
         host_id = f"host{i // 3}"
-        osd = OSD(id=i, host=host_id, primary_count=10 + i)
-        state.osds[i] = osd
-        
-        if host_id not in state.hosts:
-            state.hosts[host_id] = Host(name=host_id)
-        state.hosts[host_id].osds.append(i)
-        state.hosts[host_id].primary_count += osd.primary_count
-    
+        osds[i] = OSDInfo(osd_id=i, host=host_id, primary_count=10 + i)
+
+        if host_id not in hosts:
+            hosts[host_id] = HostInfo(hostname=host_id)
+        hosts[host_id].osd_ids.append(i)
+        hosts[host_id].primary_count += osds[i].primary_count
+
     # Create 2 pools with some PGs
     for pool_id in [1, 2]:
-        pool = Pool(id=pool_id, name=f"pool{pool_id}")
-        state.pools[pool_id] = pool
-        
-        # Add some PGs to this pool
+        pool = PoolInfo(pool_id=pool_id, pool_name=f"pool{pool_id}", pg_count=5)
+        pools[pool_id] = pool
+
         for pg_num in range(5):
-            pg = PG(
-                pgid=f"{pool_id}.{pg_num}",
-                pool_id=pool_id,
-                acting=[0, 1, 2],
-                up=[0, 1, 2],
-                primary=0
-            )
-            state.pgs[pg.pgid] = pg
-            pool.pgs.append(pg.pgid)
-    
-    return state
+            pgid = f"{pool_id}.{pg_num}"
+            pg = PGInfo(pgid=pgid, pool_id=pool_id, acting=[0, 1, 2])
+            pgs[pgid] = pg
+            pool.primary_counts[0] = pool.primary_counts.get(0, 0) + 1
+
+    return ClusterState(pgs=pgs, osds=osds, hosts=hosts, pools=pools)
 
 
 class TestConfigEnabledLevels:

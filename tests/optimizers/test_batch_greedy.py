@@ -15,10 +15,10 @@ import pytest
 import copy
 from typing import List
 
-from src.ceph_primary_balancer.optimizers.batch_greedy import BatchGreedyOptimizer
-from src.ceph_primary_balancer.optimizers.base import OptimizerRegistry
-from src.ceph_primary_balancer.models import ClusterState, OSDInfo, PGInfo, SwapProposal
-from src.ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.optimizers.batch_greedy import BatchGreedyOptimizer
+from ceph_primary_balancer.optimizers.base import OptimizerRegistry
+from ceph_primary_balancer.models import ClusterState, OSDInfo, PGInfo, SwapProposal
+from ceph_primary_balancer.scorer import Scorer
 
 
 # ============================================================================
@@ -28,8 +28,8 @@ from src.ceph_primary_balancer.scorer import Scorer
 @pytest.fixture(scope='module', autouse=True)
 def register_optimizer():
     """Register BatchGreedyOptimizer for testing."""
-    from src.ceph_primary_balancer.optimizers import OptimizerRegistry
-    from src.ceph_primary_balancer.optimizers.batch_greedy import BatchGreedyOptimizer
+    from ceph_primary_balancer.optimizers import OptimizerRegistry
+    from ceph_primary_balancer.optimizers.batch_greedy import BatchGreedyOptimizer
     OptimizerRegistry.register('batch_greedy', BatchGreedyOptimizer)
     yield
     # No cleanup needed - other tests may need the registry
@@ -202,7 +202,7 @@ class TestOptimization:
     
     def test_optimizes_imbalanced_cluster(self, simple_state):
         """Test that optimizer improves imbalanced cluster."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.analyzer import calculate_statistics
         
         initial_counts = [osd.primary_count for osd in simple_state.osds.values()]
         initial_stats = calculate_statistics(initial_counts)
@@ -220,7 +220,7 @@ class TestOptimization:
     
     def test_terminates_at_target_cv(self, simple_state):
         """Test that optimizer stops at target CV."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.analyzer import calculate_statistics
         
         optimizer = BatchGreedyOptimizer(target_cv=0.15, batch_size=10)
         optimizer.optimize(simple_state)
@@ -542,8 +542,8 @@ class TestGreedyComparison:
     
     def test_similar_final_cv(self, simple_state):
         """Test that final CV is similar to greedy."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
-        from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+        from ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
         
         # Run greedy
         state_greedy = copy.deepcopy(simple_state)
@@ -564,7 +564,7 @@ class TestGreedyComparison:
     
     def test_fewer_iterations(self, simple_state):
         """Test that batch greedy uses fewer iterations (but more swaps per iteration)."""
-        from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+        from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
         
         # Run greedy
         state_greedy = copy.deepcopy(simple_state)

@@ -17,10 +17,10 @@ import pytest
 import copy
 from typing import List
 
-from src.ceph_primary_balancer.optimizers.tabu_search import TabuSearchOptimizer
-from src.ceph_primary_balancer.optimizers.base import OptimizerRegistry
-from src.ceph_primary_balancer.models import ClusterState, OSDInfo, PGInfo, SwapProposal
-from src.ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.optimizers.tabu_search import TabuSearchOptimizer
+from ceph_primary_balancer.optimizers.base import OptimizerRegistry
+from ceph_primary_balancer.models import ClusterState, OSDInfo, PGInfo, SwapProposal
+from ceph_primary_balancer.scorer import Scorer
 
 
 # ============================================================================
@@ -30,8 +30,8 @@ from src.ceph_primary_balancer.scorer import Scorer
 @pytest.fixture(scope='module', autouse=True)
 def register_optimizer():
     """Register TabuSearchOptimizer for testing."""
-    from src.ceph_primary_balancer.optimizers import OptimizerRegistry
-    from src.ceph_primary_balancer.optimizers.tabu_search import TabuSearchOptimizer
+    from ceph_primary_balancer.optimizers import OptimizerRegistry
+    from ceph_primary_balancer.optimizers.tabu_search import TabuSearchOptimizer
     OptimizerRegistry.register('tabu_search', TabuSearchOptimizer)
     yield
     # No cleanup needed - other tests may need the registry
@@ -228,7 +228,7 @@ class TestOptimization:
     
     def test_optimizes_imbalanced_cluster(self, simple_state):
         """Test that optimizer improves imbalanced cluster."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.analyzer import calculate_statistics
         
         initial_counts = [osd.primary_count for osd in simple_state.osds.values()]
         initial_stats = calculate_statistics(initial_counts)
@@ -250,7 +250,7 @@ class TestOptimization:
     
     def test_terminates_at_target_cv(self, simple_state):
         """Test that optimizer improves CV significantly."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.analyzer import calculate_statistics
         
         initial_counts = [osd.primary_count for osd in simple_state.osds.values()]
         initial_stats = calculate_statistics(initial_counts)
@@ -472,7 +472,7 @@ class TestBestSolutionTracking:
     
     def test_restores_best_solution_at_end(self, simple_state):
         """Test that best solution is restored at optimization end."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.analyzer import calculate_statistics
         
         optimizer = TabuSearchOptimizer(
             tabu_tenure=20,
@@ -713,8 +713,8 @@ class TestGreedyComparison:
     
     def test_better_or_equal_cv_than_greedy(self, simple_state):
         """Test that tabu search achieves equal or better CV than greedy."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
-        from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+        from ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
         
         # Run greedy
         state_greedy = copy.deepcopy(simple_state)
@@ -740,8 +740,8 @@ class TestGreedyComparison:
     
     def test_expected_quality_improvement(self, simple_state):
         """Test that tabu search shows expected 10-15% improvement potential."""
-        from src.ceph_primary_balancer.analyzer import calculate_statistics
-        from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+        from ceph_primary_balancer.analyzer import calculate_statistics
+        from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
         
         # This test checks if tabu search can improve on greedy
         # Note: May not always show improvement on simple cases,
@@ -771,7 +771,7 @@ class TestGreedyComparison:
     
     def test_execution_time_ratio(self, simple_state):
         """Test that tabu search is 1.5-3x slower than greedy (as expected)."""
-        from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+        from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
         
         # Run greedy
         state_greedy = copy.deepcopy(simple_state)

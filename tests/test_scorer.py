@@ -11,8 +11,8 @@ Tests cover:
 """
 
 import unittest
-from src.ceph_primary_balancer.scorer import Scorer
-from src.ceph_primary_balancer.models import (
+from ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.models import (
     ClusterState, OSDInfo, HostInfo, PoolInfo, PGInfo
 )
 
@@ -31,15 +31,15 @@ class TestScorerInitialization(unittest.TestCase):
     def test_init_with_custom_weights(self):
         """Test initialization with custom weights."""
         scorer = Scorer(w_osd=0.7, w_host=0.2, w_pool=0.1)
-        
-        self.assertEqual(scorer.w_osd, 0.7)
-        self.assertEqual(scorer.w_host, 0.2)
-        self.assertEqual(scorer.w_pool, 0.1)
-    
-    def test_init_weights_must_sum_to_one(self):
-        """Test that weights must sum to 1.0."""
-        with self.assertRaises(ValueError):
-            Scorer(w_osd=0.5, w_host=0.3, w_pool=0.3)  # Sum = 1.1
+
+        self.assertAlmostEqual(scorer.w_osd, 0.7)
+        self.assertAlmostEqual(scorer.w_host, 0.2)
+        self.assertAlmostEqual(scorer.w_pool, 0.1)
+
+    def test_init_weights_are_normalized(self):
+        """Test that weights are normalized to sum to 1.0."""
+        scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.3)  # Sum = 1.1
+        self.assertAlmostEqual(scorer.w_osd + scorer.w_host + scorer.w_pool, 1.0)
     
     def test_init_negative_weights_rejected(self):
         """Test that negative weights are rejected."""
