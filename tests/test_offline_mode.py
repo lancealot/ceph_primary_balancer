@@ -9,8 +9,8 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 
-from src.ceph_primary_balancer import offline
-from src.ceph_primary_balancer.offline import OfflineExportError
+from ceph_primary_balancer import offline
+from ceph_primary_balancer.offline import OfflineExportError
 
 
 class TestOfflineExport(unittest.TestCase):

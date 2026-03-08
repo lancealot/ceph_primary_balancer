@@ -15,9 +15,9 @@ import os
 from unittest.mock import patch, MagicMock
 from typing import List
 
-from src.ceph_primary_balancer import collector, analyzer
-from src.ceph_primary_balancer.optimizers.greedy import calculate_variance, GreedyOptimizer
-from src.ceph_primary_balancer.models import ClusterState, SwapProposal
+from ceph_primary_balancer import collector, analyzer
+from ceph_primary_balancer.optimizers.greedy import calculate_variance, GreedyOptimizer
+from ceph_primary_balancer.models import ClusterState, SwapProposal
 
 
 class TestIntegration(unittest.TestCase):

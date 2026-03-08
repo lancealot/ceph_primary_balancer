@@ -82,16 +82,13 @@ def test_scorer_initialization():
     """Test Scorer initialization and weight validation."""
     # Valid scorer
     scorer = Scorer(w_osd=0.7, w_host=0.3, w_pool=0.0)
-    assert scorer.w_osd == 0.7
-    assert scorer.w_host == 0.3
+    assert abs(scorer.w_osd - 0.7) < 1e-9
+    assert abs(scorer.w_host - 0.3) < 1e-9
     assert scorer.w_pool == 0.0
-    
-    # Test weight validation
-    try:
-        invalid_scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.0)  # Sum != 1.0
-        assert False, "Should have raised ValueError"
-    except ValueError as e:
-        assert "sum to 1.0" in str(e)
+
+    # Weights are normalized, not rejected
+    scorer2 = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.0)
+    assert abs(scorer2.w_osd + scorer2.w_host + scorer2.w_pool - 1.0) < 1e-9
     
     print("✓ Scorer initialization test passed")
 

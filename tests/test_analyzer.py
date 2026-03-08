@@ -10,14 +10,14 @@ Tests cover:
 """
 
 import unittest
-from src.ceph_primary_balancer.analyzer import (
+from ceph_primary_balancer.analyzer import (
     calculate_statistics,
     identify_donors,
     identify_receivers,
     calculate_pool_statistics,
     get_pool_statistics_summary
 )
-from src.ceph_primary_balancer.models import (
+from ceph_primary_balancer.models import (
     OSDInfo, PoolInfo, ClusterState, Statistics
 )
 

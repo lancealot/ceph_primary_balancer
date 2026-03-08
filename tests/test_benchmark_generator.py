@@ -16,14 +16,14 @@ import os
 import statistics
 from pathlib import Path
 
-from src.ceph_primary_balancer.benchmark.generator import (
+from ceph_primary_balancer.benchmark.generator import (
     generate_imbalance_pattern,
     generate_synthetic_cluster,
     generate_ec_pool,
     save_test_dataset,
     load_test_dataset
 )
-from src.ceph_primary_balancer.models import ClusterState
+from ceph_primary_balancer.models import ClusterState
 
 
 class TestImbalancePatternGeneration(unittest.TestCase):

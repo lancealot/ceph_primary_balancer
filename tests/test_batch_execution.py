@@ -11,8 +11,8 @@ This test verifies that the generate_script function correctly:
 import unittest
 import tempfile
 import os
-from src.ceph_primary_balancer.models import SwapProposal
-from src.ceph_primary_balancer import script_generator
+from ceph_primary_balancer.models import SwapProposal
+from ceph_primary_balancer import script_generator
 
 
 class TestBatchExecution(unittest.TestCase):

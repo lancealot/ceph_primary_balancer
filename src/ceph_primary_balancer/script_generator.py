@@ -139,7 +139,7 @@ echo "Cluster health: $HEALTH"
 echo ""
 '''
     
-    script_content += '''
+    script_content += f'''
 
 TOTAL={total_commands}
 BATCH_SIZE={batch_size}
@@ -150,7 +150,7 @@ apply_mapping() {{
     local pgid=$1
     local new_primary=$2
     ((COUNT++))
-    
+
     if ceph osd pg-upmap-primary "$pgid" "$new_primary" 2>/dev/null; then
         printf "[%3d/%d] %-12s -> OSD.%-4d OK\\n" "$COUNT" "$TOTAL" "$pgid" "$new_primary"
     else
@@ -158,7 +158,6 @@ apply_mapping() {{
         ((FAILED++))
     fi
 }}
-
 '''
     
     # Group swaps into batches and generate commands

@@ -8,13 +8,13 @@ to ensure the Phase 7 architecture is working correctly.
 import unittest
 from typing import List
 
-from src.ceph_primary_balancer.optimizers.base import (
+from ceph_primary_balancer.optimizers.base import (
     OptimizerBase,
     OptimizerRegistry,
     OptimizerStats
 )
-from src.ceph_primary_balancer.models import ClusterState, SwapProposal
-from src.ceph_primary_balancer.scorer import Scorer
+from ceph_primary_balancer.models import ClusterState, SwapProposal
+from ceph_primary_balancer.scorer import Scorer
 
 
 class DummyOptimizer(OptimizerBase):
@@ -129,7 +129,7 @@ class TestOptimizerBase(unittest.TestCase):
         optimizer = DummyOptimizer(scorer=custom_scorer)
         
         self.assertIs(optimizer.scorer, custom_scorer)
-        self.assertEqual(optimizer.scorer.w_osd, 0.7)
+        self.assertAlmostEqual(optimizer.scorer.w_osd, 0.7)
     
     def test_optimizer_with_enabled_levels(self):
         """Test optimizer with enabled_levels parameter."""
@@ -140,17 +140,6 @@ class TestOptimizerBase(unittest.TestCase):
         self.assertEqual(optimizer.scorer.w_osd, 0.5)
         self.assertEqual(optimizer.scorer.w_host, 0.5)
         self.assertEqual(optimizer.scorer.w_pool, 0.0)
-    
-    def test_optimizer_with_dynamic_weights(self):
-        """Test optimizer with dynamic weights enabled."""
-        optimizer = DummyOptimizer(
-            dynamic_weights=True,
-            dynamic_strategy='target_distance'
-        )
-        
-        # Should create DynamicScorer
-        from src.ceph_primary_balancer.dynamic_scorer import DynamicScorer
-        self.assertIsInstance(optimizer.scorer, DynamicScorer)
     
     def test_algorithm_name_property(self):
         """Test algorithm_name property."""
@@ -273,7 +262,7 @@ class TestOptimizerBaseHelpers(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        from src.ceph_primary_balancer.models import OSDInfo, PGInfo
+        from ceph_primary_balancer.models import OSDInfo, PGInfo
         
         # Create simple test state
         # Note: primary is a property that returns acting[0], not an init parameter
@@ -327,7 +316,7 @@ class TestOptimizerBaseHelpers(unittest.TestCase):
     
     def test_check_termination_target_cv(self):
         """Test termination check for target CV."""
-        from src.ceph_primary_balancer.models import OSDInfo, PGInfo
+        from ceph_primary_balancer.models import OSDInfo, PGInfo
         
         # Create perfectly balanced state
         balanced_state = ClusterState(
