@@ -14,7 +14,8 @@ import copy
 import os
 from datetime import datetime
 from pathlib import Path
-from . import collector, analyzer, optimizer, script_generator
+from . import collector, analyzer, script_generator
+from .optimizers.greedy import GreedyOptimizer, apply_swap
 from .scorer import Scorer
 from .exporter import JSONExporter
 from .reporter import Reporter
@@ -553,16 +554,17 @@ def main():
     # Store original state for reporting (before optimization modifies it)
     original_state = copy.deepcopy(state)
     
-    swaps = optimizer.optimize_primaries(
-        state,
-        args.target_cv,
+    greedy = GreedyOptimizer(
+        target_cv=args.target_cv,
         scorer=scorer,
         pool_filter=args.pool,
         enabled_levels=enabled_levels,
         dynamic_weights=args.dynamic_weights,
         dynamic_strategy=args.dynamic_strategy,
-        weight_update_interval=args.weight_update_interval
+        weight_update_interval=args.weight_update_interval,
+        verbose=True,
     )
+    swaps = greedy.optimize(state)
     
     # Step 5: Handle case where no swaps were found
     if not swaps:
@@ -588,7 +590,7 @@ def main():
         
         # Re-apply the limited set of swaps
         for swap in swaps:
-            optimizer.apply_swap(state, swap)
+            apply_swap(state, swap)
         
         print(f"Proposed state recalculated with {len(swaps)} swaps")
     

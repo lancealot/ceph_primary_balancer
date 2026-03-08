@@ -204,13 +204,12 @@ class BenchmarkSuite:
                 scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
                 
                 # Optimize
-                from ..optimizer import optimize_primaries
-                swaps = optimize_primaries(
-                    state=optimized_state,
-                    scorer=scorer,
+                from ..optimizers.greedy import GreedyOptimizer
+                swaps = GreedyOptimizer(
                     target_cv=self.config.get('target_cv', 0.10),
-                    max_iterations=self.config.get('max_iterations', 1000)
-                )
+                    max_iterations=self.config.get('max_iterations', 1000),
+                    scorer=scorer,
+                ).optimize(optimized_state)
                 
                 # Analyze quality
                 quality = analyze_balance_quality(original_state, optimized_state, swaps)

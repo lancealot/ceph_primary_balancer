@@ -15,7 +15,8 @@ import os
 from unittest.mock import patch, MagicMock
 from typing import List
 
-from src.ceph_primary_balancer import collector, analyzer, optimizer
+from src.ceph_primary_balancer import collector, analyzer
+from src.ceph_primary_balancer.optimizers.greedy import calculate_variance, GreedyOptimizer
 from src.ceph_primary_balancer.models import ClusterState, SwapProposal
 
 
@@ -123,16 +124,16 @@ class TestIntegration(unittest.TestCase):
                               "Initial CV should be > 10% to demonstrate imbalance")
             
             # Store initial variance for comparison
-            initial_variance = optimizer.calculate_variance(state.osds)
+            initial_variance = calculate_variance(state.osds)
             
             # Step 4: Run optimization
             print(f"\nRunning optimization (target CV: 10%)...")
-            swaps = optimizer.optimize_primaries(state, target_cv=0.10, max_iterations=1000)
+            swaps = GreedyOptimizer(target_cv=0.10, max_iterations=1000).optimize(state)
             
             # Step 5: Verify improvement
             final_counts = [osd.primary_count for osd in state.osds.values()]
             final_stats = analyzer.calculate_statistics(final_counts)
-            final_variance = optimizer.calculate_variance(state.osds)
+            final_variance = calculate_variance(state.osds)
             
             print(f"\nFinal Statistics:")
             print(f"  Mean:    {final_stats.mean:.1f} primaries/OSD")

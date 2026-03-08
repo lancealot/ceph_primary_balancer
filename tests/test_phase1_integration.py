@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from ceph_primary_balancer.models import PGInfo, OSDInfo, HostInfo, ClusterState
 from ceph_primary_balancer.scorer import Scorer
-from ceph_primary_balancer.optimizer import optimize_primaries
+from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
 from ceph_primary_balancer.analyzer import calculate_statistics
 
 
@@ -249,12 +249,11 @@ def test_comprehensive_host_balancing_integration():
     
     # Run optimization
     print("\nOptimizing...\n")
-    swaps = optimize_primaries(
-        state,
+    swaps = GreedyOptimizer(
         target_cv=0.10,
         max_iterations=1000,
-        scorer=scorer
-    )
+        scorer=scorer,
+    ).optimize(state)
     
     # Step 4: Analyze optimized state
     print(f"\n{'='*70}")

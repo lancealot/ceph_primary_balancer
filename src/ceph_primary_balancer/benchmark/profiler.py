@@ -13,7 +13,7 @@ from typing import List, Tuple, Optional, Dict
 import copy
 
 from ..models import ClusterState
-from ..optimizer import optimize_primaries
+from ..optimizers.greedy import GreedyOptimizer
 from ..scorer import Scorer
 from .generator import generate_synthetic_cluster
 
@@ -122,12 +122,11 @@ def profile_optimization(
     
     # Run optimization
     optimize_start = time.time()
-    swaps = optimize_primaries(
-        state=state_copy,
-        scorer=scorer,
+    swaps = GreedyOptimizer(
         target_cv=target_cv,
-        max_iterations=max_iterations
-    )
+        max_iterations=max_iterations,
+        scorer=scorer,
+    ).optimize(state_copy)
     optimize_end = time.time()
     
     # End timing
@@ -301,7 +300,7 @@ def profile_hot_spots(
     
     # Time optimization
     start = time.time()
-    _ = optimize_primaries(state, scorer, target_cv, max_iterations=1000)
+    _ = GreedyOptimizer(target_cv=target_cv, max_iterations=1000, scorer=scorer).optimize(state)
     timings['optimization'] = time.time() - start
     
     return timings

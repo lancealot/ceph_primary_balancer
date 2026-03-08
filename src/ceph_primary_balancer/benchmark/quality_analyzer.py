@@ -12,7 +12,7 @@ from typing import List, Dict, Tuple, Optional
 
 from ..models import ClusterState, SwapProposal, Statistics
 from ..analyzer import calculate_statistics
-from ..optimizer import optimize_primaries
+from ..optimizers.greedy import GreedyOptimizer
 from ..scorer import Scorer
 
 
@@ -280,12 +280,11 @@ def analyze_convergence(
     
     # Run optimization
     state_copy = copy.deepcopy(state)
-    swaps = optimize_primaries(
-        state=state_copy,
-        scorer=scorer,
+    swaps = GreedyOptimizer(
         target_cv=target_cv,
-        max_iterations=max_iterations
-    )
+        max_iterations=max_iterations,
+        scorer=scorer,
+    ).optimize(state_copy)
     
     # Calculate final CV
     final_counts = [osd.primary_count for osd in state_copy.osds.values()]
@@ -452,11 +451,10 @@ def analyze_multi_dimensional_balance(
         
         # Optimize
         state_copy = copy.deepcopy(state)
-        swaps = optimize_primaries(
-            state=state_copy,
+        swaps = GreedyOptimizer(
+            target_cv=0.10,
             scorer=scorer,
-            target_cv=0.10
-        )
+        ).optimize(state_copy)
         
         # Analyze quality
         quality = analyze_balance_quality(state, state_copy, swaps)
