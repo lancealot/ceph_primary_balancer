@@ -205,68 +205,64 @@ def find_best_swap(
 ) -> Optional[SwapProposal]:
     """
     Find the single best swap that reduces composite score the most.
-    
-    This function evaluates all possible swaps from donors to receivers
-    and returns the one that provides the greatest score improvement.
-    Only OSDs in the PG's acting set are considered as candidates.
-    
-    Phase 2 Enhancement: Now uses three-dimensional scoring including pool-level balance.
-    
+
+    Uses O(1) delta scoring for OSD/host dimensions and O(p) for pool
+    dimension (where p = OSDs in affected pool), avoiding full state copies.
+
     Args:
         state: Current ClusterState
         donors: List of OSD IDs with too many primaries
         receivers: List of OSD IDs with too few primaries
         scorer: Scorer instance for composite scoring
-        
+
     Returns:
         SwapProposal with best improvement, or None if no beneficial swaps found
-        
-    Note:
-        Returns None if donors or receivers lists are empty or if no valid swaps exist
     """
-    # Handle empty donor or receiver lists
     if not donors or not receivers:
         return None
-    
-    current_score = scorer.calculate_score(state)
+
+    # Compute score components once — all candidate evaluations use deltas from this
+    components = scorer.calculate_score_with_components(state)
+    current_score = components.total
+
+    # Convert to sets for O(1) lookup
+    donor_set = set(donors)
+    receiver_set = set(receivers)
+
     best_swap = None
     best_improvement = 0
-    
-    # For each PG where donor is primary
+
     for pg in state.pgs.values():
-        if pg.primary not in donors:
+        if pg.primary not in donor_set:
             continue
-        
-        # For each candidate OSD in acting set (skip current primary)
+
         for candidate_osd in pg.acting[1:]:
-            if candidate_osd not in receivers:
+            if candidate_osd not in receiver_set:
                 continue
-            
-            # Calculate score after swap
-            new_score = simulate_swap_score(state, pg.pgid, candidate_osd, scorer)
+
+            # O(1) delta scoring (O(p) for pool dimension)
+            new_score = scorer.calculate_swap_delta(
+                state, components, pg.primary, candidate_osd, pg.pool_id
+            )
             improvement = current_score - new_score
-            
-            # Prioritize swaps that improve host balance
-            # If hosts are being tracked, apply a small bonus for cross-host swaps
+
+            # Small bonus for cross-host swaps (helps break ties)
             host_bonus = 0.0
             if state.hosts and state.osds[pg.primary].host and state.osds[candidate_osd].host:
-                old_host = state.osds[pg.primary].host
-                new_host = state.osds[candidate_osd].host
-                if old_host != new_host:
-                    # Small bonus for cross-host swaps (helps break ties)
+                if state.osds[pg.primary].host != state.osds[candidate_osd].host:
                     host_bonus = 0.01
-            
+
             effective_improvement = improvement + host_bonus
-            
+
             if effective_improvement > best_improvement:
-                best_improvement = improvement  # Store actual improvement, not bonus
+                best_improvement = improvement
                 best_swap = SwapProposal(
                     pgid=pg.pgid,
                     old_primary=pg.primary,
                     new_primary=candidate_osd,
                     score_improvement=improvement
                 )
-    
+
     return best_swap
 
 

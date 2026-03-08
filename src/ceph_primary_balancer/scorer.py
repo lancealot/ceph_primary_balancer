@@ -7,13 +7,23 @@ This module implements composite scoring across multiple dimensions:
 - Pool-level variance (ensures per-pool balance)
 
 The scorer allows configurable weights to prioritize different optimization goals.
-Phase 2 complete: Three-dimensional scoring fully implemented.
-Phase 6.5: Added configurable optimization levels to enable/disable dimensions.
 """
 
+import statistics as stats_module
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from .models import ClusterState, Statistics
 from .analyzer import calculate_statistics, calculate_average_pool_variance
+
+
+@dataclass
+class ScoreComponents:
+    """Cached score components for O(1) delta scoring."""
+    osd_var: float = 0.0
+    host_var: float = 0.0
+    pool_vars: Dict[int, float] = field(default_factory=dict)  # pool_id -> variance
+    avg_pool_var: float = 0.0
+    total: float = 0.0
 
 
 class Scorer:
@@ -191,6 +201,108 @@ class Scorer:
         
         return score
     
+    def calculate_score_with_components(self, state: ClusterState) -> ScoreComponents:
+        """Calculate score and cache individual variance components for delta scoring."""
+        components = ScoreComponents()
+
+        if 'osd' in self.enabled_levels:
+            components.osd_var = self.calculate_osd_variance(state)
+
+        if 'host' in self.enabled_levels:
+            components.host_var = self.calculate_host_variance(state)
+
+        if 'pool' in self.enabled_levels and state.pools:
+            from .analyzer import calculate_pool_statistics
+            for pool in state.pools.values():
+                if pool.primary_counts:
+                    try:
+                        ps = calculate_pool_statistics(pool, state.osds)
+                        components.pool_vars[pool.pool_id] = ps.std_dev ** 2
+                    except ValueError:
+                        continue
+            if components.pool_vars:
+                components.avg_pool_var = sum(components.pool_vars.values()) / len(components.pool_vars)
+
+        components.total = (
+            self.w_osd * components.osd_var
+            + self.w_host * components.host_var
+            + self.w_pool * components.avg_pool_var
+        )
+        return components
+
+    def calculate_swap_delta(
+        self,
+        state: ClusterState,
+        components: ScoreComponents,
+        old_primary: int,
+        new_primary: int,
+        pool_id: int,
+    ) -> float:
+        """
+        Compute score delta for a proposed swap in O(1) for OSD/host, O(p) for pool.
+
+        Returns the NEW score (components.total + delta). Lower is better.
+        """
+        delta = 0.0
+
+        # OSD dimension: delta_var = 2*(new_count - old_count + 1) / (n-1)
+        if 'osd' in self.enabled_levels:
+            n = len(state.osds)
+            if n > 1:
+                old_count = state.osds[old_primary].primary_count
+                new_count = state.osds[new_primary].primary_count
+                delta_osd_var = 2.0 * (new_count - old_count + 1) / (n - 1)
+                delta += self.w_osd * delta_osd_var
+
+        # Host dimension: same formula, but only if different hosts
+        if 'host' in self.enabled_levels and state.hosts:
+            old_host = state.osds[old_primary].host
+            new_host = state.osds[new_primary].host
+            if old_host and new_host and old_host != new_host:
+                n = len(state.hosts)
+                if n > 1:
+                    old_host_count = state.hosts[old_host].primary_count
+                    new_host_count = state.hosts[new_host].primary_count
+                    delta_host_var = 2.0 * (new_host_count - old_host_count + 1) / (n - 1)
+                    delta += self.w_host * delta_host_var
+
+        # Pool dimension: recompute just the affected pool's variance
+        if 'pool' in self.enabled_levels and state.pools and pool_id in state.pools:
+            pool = state.pools[pool_id]
+            old_pool_var = components.pool_vars.get(pool_id, 0.0)
+
+            # Build simulated counts for this pool only
+            sim_counts = dict(pool.primary_counts)
+            # Decrement old primary
+            if old_primary in sim_counts:
+                sim_counts[old_primary] -= 1
+                if sim_counts[old_primary] == 0:
+                    del sim_counts[old_primary]
+            # Increment new primary
+            sim_counts[new_primary] = sim_counts.get(new_primary, 0) + 1
+
+            # Compute new variance for this pool (sample variance to match stdev²)
+            counts_list = list(sim_counts.values())
+            if len(counts_list) > 1:
+                new_pool_var = stats_module.variance(counts_list)
+            else:
+                new_pool_var = 0.0
+
+            # Delta to avg pool var: replace this pool's contribution
+            num_pools = len(components.pool_vars) if components.pool_vars else 1
+            # Handle case where pool wasn't in pool_vars before
+            if pool_id not in components.pool_vars and counts_list:
+                # Pool is being added
+                num_pools_new = num_pools + 1
+                delta_avg = (sum(components.pool_vars.values()) + new_pool_var) / num_pools_new - components.avg_pool_var
+            elif num_pools > 0:
+                delta_avg = (new_pool_var - old_pool_var) / num_pools
+            else:
+                delta_avg = 0.0
+            delta += self.w_pool * delta_avg
+
+        return components.total + delta
+
     def is_level_enabled(self, level: str) -> bool:
         """Check if a specific optimization level is enabled.
         

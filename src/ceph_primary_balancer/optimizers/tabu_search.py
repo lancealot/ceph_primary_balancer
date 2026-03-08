@@ -288,28 +288,34 @@ class TabuSearchOptimizer(OptimizerBase):
         if not donors or not receivers:
             return None
         
-        current_score = self.scorer.calculate_score(state)
+        components = self.scorer.calculate_score_with_components(state)
+        current_score = components.total
         best_swap = None
         best_improvement = 0.0
         best_is_tabu = False
-        
+
+        donor_set = set(donors)
+        receiver_set = set(receivers)
+
         # Collect candidate swaps
         candidates_evaluated = 0
-        
+
         for pg in state.pgs.values():
-            if pg.primary not in donors:
+            if pg.primary not in donor_set:
                 continue
-            
+
             for candidate_osd in pg.acting[1:]:
-                if candidate_osd not in receivers:
+                if candidate_osd not in receiver_set:
                     continue
-                
+
                 # Limit candidates evaluated per iteration
                 if candidates_evaluated >= self.max_candidates:
                     break
-                
-                # Simulate swap and calculate improvement
-                new_score = self._simulate_swap_score(state, pg.pgid, candidate_osd)
+
+                # Delta scoring: O(1) for OSD/host, O(p) for pool
+                new_score = self.scorer.calculate_swap_delta(
+                    state, components, pg.primary, candidate_osd, pg.pool_id
+                )
                 improvement = current_score - new_score
                 
                 self.stats.swaps_evaluated += 1

@@ -191,20 +191,25 @@ class BatchGreedyOptimizer(OptimizerBase):
         if not donors or not receivers:
             return []
         
-        current_score = self.scorer.calculate_score(state)
+        components = self.scorer.calculate_score_with_components(state)
+        current_score = components.total
         candidates = []
-        
-        # Evaluate all possible swaps
+
+        donor_set = set(donors)
+        receiver_set = set(receivers)
+
+        # Evaluate all possible swaps using delta scoring
         for pg in state.pgs.values():
-            if pg.primary not in donors:
+            if pg.primary not in donor_set:
                 continue
-            
+
             for candidate_osd in pg.acting[1:]:
-                if candidate_osd not in receivers:
+                if candidate_osd not in receiver_set:
                     continue
-                
-                # Simulate swap and calculate improvement
-                new_score = self._simulate_swap_score(state, pg.pgid, candidate_osd)
+
+                new_score = self.scorer.calculate_swap_delta(
+                    state, components, pg.primary, candidate_osd, pg.pool_id
+                )
                 improvement = current_score - new_score
                 
                 if improvement > 0:
