@@ -65,6 +65,7 @@ tests/fixtures/*/reports/
 *.json
 *.md
 !README.md
+!CLAUDE.md
 !CHANGELOG.md
 !RELEASE-NOTES*.md
 !docs/*.md
