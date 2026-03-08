@@ -19,7 +19,8 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 from typing import List
 
-from src.ceph_primary_balancer import collector, analyzer, optimizer, cli
+from src.ceph_primary_balancer import collector, analyzer, cli
+from src.ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
 from src.ceph_primary_balancer.models import ClusterState, SwapProposal
 from src.ceph_primary_balancer.dynamic_scorer import DynamicScorer
 from src.ceph_primary_balancer.scorer import Scorer
@@ -114,15 +115,14 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print(f"Initial CV: {initial_stats.cv:.2%}")
         
         # Run optimization with dynamic weights enabled
-        swaps = optimizer.optimize_primaries(
-            state,
+        swaps = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=10
-        )
-        
+            weight_update_interval=10,
+        ).optimize(state)
+
         # Verify improvement occurred
         final_counts = [osd.primary_count for osd in state.osds.values()]
         final_stats = analyzer.calculate_statistics(final_counts)
@@ -158,14 +158,13 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print(f"Initial CV: {initial_stats.cv:.2%}")
         
         # Run with proportional strategy
-        swaps = optimizer.optimize_primaries(
-            state,
+        swaps = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             dynamic_weights=True,
             dynamic_strategy='proportional',
-            weight_update_interval=10
-        )
+            weight_update_interval=10,
+        ).optimize(state)
         
         final_counts = [osd.primary_count for osd in state.osds.values()]
         final_stats = analyzer.calculate_statistics(final_counts)
@@ -199,14 +198,13 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print(f"Initial CV: {initial_stats.cv:.2%}")
         
         # Run with adaptive_hybrid strategy
-        swaps = optimizer.optimize_primaries(
-            state,
+        swaps = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             dynamic_weights=True,
             dynamic_strategy='adaptive_hybrid',
-            weight_update_interval=10
-        )
+            weight_update_interval=10,
+        ).optimize(state)
         
         final_counts = [osd.primary_count for osd in state.osds.values()]
         final_stats = analyzer.calculate_statistics(final_counts)
@@ -237,12 +235,11 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print("=" * 70)
         
         # Run with fixed weights
-        swaps_fixed = optimizer.optimize_primaries(
-            state_fixed,
+        swaps_fixed = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
-            dynamic_weights=False
-        )
+            dynamic_weights=False,
+        ).optimize(state_fixed)
         
         fixed_counts = [osd.primary_count for osd in state_fixed.osds.values()]
         fixed_stats = analyzer.calculate_statistics(fixed_counts)
@@ -250,14 +247,13 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print(f"Fixed weights:   CV={fixed_stats.cv:.2%}, Swaps={len(swaps_fixed)}")
         
         # Run with dynamic weights
-        swaps_dynamic = optimizer.optimize_primaries(
-            state_dynamic,
+        swaps_dynamic = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=10
-        )
+            weight_update_interval=10,
+        ).optimize(state_dynamic)
         
         dynamic_counts = [osd.primary_count for osd in state_dynamic.osds.values()]
         dynamic_stats = analyzer.calculate_statistics(dynamic_counts)
@@ -415,15 +411,14 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         
         # Test with OSD-only
         print("\nTesting OSD-only optimization...")
-        swaps_osd = optimizer.optimize_primaries(
-            state,
+        swaps_osd = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             enabled_levels=['osd'],
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=10
-        )
+            weight_update_interval=10,
+        ).optimize(state)
         
         print(f"  OSD-only swaps: {len(swaps_osd)}")
         self.assertGreater(len(swaps_osd), 0, "Should find swaps with OSD-only")
@@ -434,15 +429,14 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         
         # Test with OSD+HOST
         print("\nTesting OSD+HOST optimization...")
-        swaps_osd_host = optimizer.optimize_primaries(
-            state,
+        swaps_osd_host = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             enabled_levels=['osd', 'host'],
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=10
-        )
+            weight_update_interval=10,
+        ).optimize(state)
         
         print(f"  OSD+HOST swaps: {len(swaps_osd_host)}")
         self.assertGreater(len(swaps_osd_host), 0, "Should find swaps with OSD+HOST")
@@ -525,14 +519,13 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print("=" * 70)
         
         # This should update weights every iteration
-        swaps = optimizer.optimize_primaries(
-            state,
+        swaps = GreedyOptimizer(
             target_cv=0.10,
-            max_iterations=100,  # Limit iterations for performance
+            max_iterations=100,
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=1
-        )
+            weight_update_interval=1,
+        ).optimize(state)
         
         print(f"Swaps with interval=1: {len(swaps)}")
         
@@ -558,14 +551,13 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print("=" * 70)
         
         # This should almost never update (or only once)
-        swaps = optimizer.optimize_primaries(
-            state,
+        swaps = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=10000
-        )
+            weight_update_interval=10000,
+        ).optimize(state)
         
         print(f"Swaps with interval=10000: {len(swaps)}")
         
@@ -592,15 +584,14 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         print("TEST: Swap Validity with Dynamic Weights")
         print("=" * 70)
         
-        swaps = optimizer.optimize_primaries(
-            state,
+        swaps = GreedyOptimizer(
             target_cv=0.10,
             max_iterations=500,
             dynamic_weights=True,
             dynamic_strategy='target_distance',
-            weight_update_interval=10
-        )
-        
+            weight_update_interval=10,
+        ).optimize(state)
+
         print(f"Validating {len(swaps)} swaps...")
         
         # Track unique swaps

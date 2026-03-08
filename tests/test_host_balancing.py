@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from ceph_primary_balancer.models import PGInfo, OSDInfo, HostInfo, ClusterState, SwapProposal
 from ceph_primary_balancer.scorer import Scorer
-from ceph_primary_balancer.optimizer import simulate_swap_score, apply_swap
+from ceph_primary_balancer.optimizers.greedy import simulate_swap_score, apply_swap
 from ceph_primary_balancer.analyzer import calculate_statistics
 
 
