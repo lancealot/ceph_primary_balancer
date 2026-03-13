@@ -7,7 +7,7 @@ and generate human-readable summary reports.
 """
 
 import statistics
-from typing import List, Dict
+from typing import Dict, List, Set, Tuple
 
 from .models import OSDInfo, PoolInfo, ClusterState, Statistics
 
@@ -115,6 +115,63 @@ def identify_receivers(osds: Dict[int, OSDInfo], threshold_pct: float = 0.1) -> 
     receivers = [osd_id for osd_id, osd in osds.items() if osd.primary_count < threshold]
     
     return sorted(receivers)
+
+
+def identify_pool_donors_receivers(
+    state: ClusterState,
+    threshold_pct: float = 0.1,
+) -> Tuple[Dict[int, Set[int]], Dict[int, Set[int]]]:
+    """
+    Identify per-pool donors and receivers.
+
+    For each pool, computes the mean primary count across participating OSDs
+    (any OSD that appears in an acting set for that pool). OSDs above/below
+    the threshold are donors/receivers for that pool.
+
+    Returns:
+        (pool_donors, pool_receivers) where each is a dict mapping
+        pool_id -> set of OSD IDs.
+    """
+    if not state.pools:
+        return {}, {}
+
+    # Precompute participating OSDs per pool in a single pass over PGs
+    pool_osds: Dict[int, Set[int]] = {}
+    for pg in state.pgs.values():
+        if pg.pool_id not in pool_osds:
+            pool_osds[pg.pool_id] = set()
+        pool_osds[pg.pool_id].update(pg.acting)
+
+    pool_donors: Dict[int, Set[int]] = {}
+    pool_receivers: Dict[int, Set[int]] = {}
+
+    for pool_id, pool in state.pools.items():
+        participating = pool_osds.get(pool_id, set())
+        if len(participating) < 2:
+            continue
+
+        total_primaries = sum(pool.primary_counts.values())
+        mean = total_primaries / len(participating)
+        if mean == 0:
+            continue
+
+        hi = mean * (1 + threshold_pct)
+        lo = mean * (1 - threshold_pct)
+
+        donors = set()
+        receivers = set()
+        for osd_id in participating:
+            count = pool.primary_counts.get(osd_id, 0)
+            if count > hi:
+                donors.add(osd_id)
+            elif count < lo:
+                receivers.add(osd_id)
+
+        if donors and receivers:
+            pool_donors[pool_id] = donors
+            pool_receivers[pool_id] = receivers
+
+    return pool_donors, pool_receivers
 
 
 def calculate_pool_statistics(pool: PoolInfo, osds: Dict[int, OSDInfo]) -> Statistics:

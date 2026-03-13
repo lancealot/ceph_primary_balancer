@@ -264,14 +264,15 @@ class TabuSearchOptimizer(OptimizerBase):
         Returns:
             Best SwapProposal or None if no valid swaps
         """
-        from ..analyzer import identify_donors, identify_receivers
-        
+        from ..analyzer import identify_donors, identify_receivers, identify_pool_donors_receivers
+
         donors = identify_donors(state.osds)
         receivers = identify_receivers(state.osds)
-        
-        if not donors or not receivers:
+        pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+        if not donors and not pool_donors:
             return None
-        
+
         components = self.scorer.calculate_score_with_components(state)
         current_score = components.total
 
@@ -281,15 +282,20 @@ class TabuSearchOptimizer(OptimizerBase):
         best_tabu_swap = None
         best_tabu_improvement = float('-inf')
 
-        donor_set = set(donors)
-        receiver_set = set(receivers)
+        donor_set = set(donors) if donors else set()
+        receiver_set = set(receivers) if receivers else set()
 
         for pg in state.pgs.values():
-            if pg.primary not in donor_set:
+            pool_id = pg.pool_id
+            is_donor = (pg.primary in donor_set or
+                        pg.primary in pool_donors.get(pool_id, set()))
+            if not is_donor:
                 continue
 
             for candidate_osd in pg.acting[1:]:
-                if candidate_osd not in receiver_set:
+                is_receiver = (candidate_osd in receiver_set or
+                               candidate_osd in pool_receivers.get(pool_id, set()))
+                if not is_receiver:
                     continue
 
                 new_score = self.scorer.calculate_swap_delta(

@@ -15,7 +15,7 @@ Phase 7 Update: Refactored into OptimizerBase architecture while maintaining
 100% backward compatibility with existing behavior.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from .base import OptimizerBase
 from ..models import ClusterState, OSDInfo, SwapProposal, HostInfo, PoolInfo
@@ -201,48 +201,68 @@ def find_best_swap(
     state: ClusterState,
     donors: List[int],
     receivers: List[int],
-    scorer: Scorer
+    scorer: Scorer,
+    pool_donors: Optional[Dict[int, Set[int]]] = None,
+    pool_receivers: Optional[Dict[int, Set[int]]] = None,
 ) -> Optional[SwapProposal]:
     """
     Find the single best swap that reduces composite score the most.
 
-    Uses O(1) delta scoring for OSD/host dimensions and O(p) for pool
-    dimension (where p = OSDs in affected pool), avoiding full state copies.
+    A PG is a candidate if its primary is a donor at the OSD level OR at
+    the pool level for that PG's pool. Similarly, a candidate OSD in the
+    acting set qualifies if it's a receiver at OSD level OR pool level.
+    This allows pool-imbalanced swaps to be proposed even when the involved
+    OSDs are near the global mean.
 
     Args:
         state: Current ClusterState
-        donors: List of OSD IDs with too many primaries
-        receivers: List of OSD IDs with too few primaries
+        donors: OSD-level donor OSD IDs
+        receivers: OSD-level receiver OSD IDs
         scorer: Scorer instance for composite scoring
+        pool_donors: Per-pool donor sets (pool_id -> set of OSD IDs)
+        pool_receivers: Per-pool receiver sets (pool_id -> set of OSD IDs)
 
     Returns:
         SwapProposal with best improvement, or None if no beneficial swaps found
     """
-    if not donors or not receivers:
+    if not donors and not pool_donors:
         return None
+    if not receivers and not pool_receivers:
+        return None
+
+    pool_donors = pool_donors or {}
+    pool_receivers = pool_receivers or {}
 
     # Compute score components once — all candidate evaluations use deltas from this
     components = scorer.calculate_score_with_components(state)
     current_score = components.total
 
     # Convert to sets for O(1) lookup
-    donor_set = set(donors)
-    receiver_set = set(receivers)
+    donor_set = set(donors) if donors else set()
+    receiver_set = set(receivers) if receivers else set()
 
     best_swap = None
     best_improvement = 0
 
     for pg in state.pgs.values():
-        if pg.primary not in donor_set:
+        pool_id = pg.pool_id
+        # Primary is a candidate donor if it's an OSD-level donor OR a
+        # pool-level donor for this PG's pool
+        is_donor = (pg.primary in donor_set or
+                    pg.primary in pool_donors.get(pool_id, set()))
+        if not is_donor:
             continue
 
         for candidate_osd in pg.acting[1:]:
-            if candidate_osd not in receiver_set:
+            # Candidate is a receiver at OSD level or pool level
+            is_receiver = (candidate_osd in receiver_set or
+                           candidate_osd in pool_receivers.get(pool_id, set()))
+            if not is_receiver:
                 continue
 
             # O(1) delta scoring (O(p) for pool dimension)
             new_score = scorer.calculate_swap_delta(
-                state, components, pg.primary, candidate_osd, pg.pool_id
+                state, components, pg.primary, candidate_osd, pool_id
             )
             improvement = current_score - new_score
 
@@ -359,12 +379,15 @@ class GreedyOptimizer(OptimizerBase):
             # Identify donors and receivers at OSD level
             donors = analyzer.identify_donors(state.osds)
             receivers = analyzer.identify_receivers(state.osds)
-            
-            if not donors or not receivers:
+
+            # Identify per-pool donors and receivers
+            pool_donors, pool_receivers = analyzer.identify_pool_donors_receivers(state)
+
+            if not donors and not pool_donors:
                 if self.verbose:
                     print("No more donors or receivers")
                 break
-            
+
             # Find best swap
             # If pool filtering is enabled, create filtered state
             if self.pool_filter is not None:
@@ -373,17 +396,18 @@ class GreedyOptimizer(OptimizerBase):
                     if self.verbose:
                         print(f"No PGs found in pool {self.pool_filter}")
                     break
-                
-                # Create temporary state with filtered PGs for swap finding
+
                 filtered_state = ClusterState(
                     pgs=filtered_pgs,
                     osds=state.osds,
                     hosts=state.hosts,
                     pools=state.pools
                 )
-                swap = find_best_swap(filtered_state, donors, receivers, self.scorer)
+                swap = find_best_swap(filtered_state, donors, receivers, self.scorer,
+                                      pool_donors, pool_receivers)
             else:
-                swap = find_best_swap(state, donors, receivers, self.scorer)
+                swap = find_best_swap(state, donors, receivers, self.scorer,
+                                      pool_donors, pool_receivers)
             
             if swap is None:
                 if self.verbose:
