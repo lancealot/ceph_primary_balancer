@@ -31,8 +31,7 @@ Algorithm Overview:
 Phase 7C: Advanced Optimization Algorithms
 """
 
-from typing import List, Dict, Optional, Tuple, Set
-from collections import deque
+from typing import List, Dict, Optional, Set
 from copy import deepcopy
 
 from .base import OptimizerBase
@@ -70,33 +69,22 @@ class TabuSearchOptimizer(OptimizerBase):
         aspiration_threshold: float = 0.1,
         diversification_enabled: bool = True,
         diversification_threshold: int = 100,
-        max_candidates: int = 50,
         **kwargs
     ):
         """
         Initialize Tabu Search optimizer.
-        
+
         Args:
             tabu_tenure: Number of iterations a PG remains tabu (default: 50).
-                        Higher values provide more diversification but may
-                        miss good moves. Typical values: 30-100.
             aspiration_threshold: Score improvement threshold for overriding
                                  tabu status (default: 0.1). If a tabu move
                                  produces a score this much better than the
                                  best known, it's allowed.
             diversification_enabled: Enable diversification mechanism to escape
-                                    when stuck (default: True). If True, restarts
-                                    from best solution when no improvement found
-                                    for diversification_threshold iterations.
+                                    when stuck (default: True).
             diversification_threshold: Iterations without improvement before
                                       diversification kicks in (default: 100).
-            max_candidates: Maximum number of candidate swaps to evaluate per
-                           iteration (default: 50). Higher values may find
-                           better swaps but increase computation.
             **kwargs: Base optimizer parameters (target_cv, max_iterations, etc.)
-        
-        Raises:
-            ValueError: If parameters are out of valid range
         """
         super().__init__(**kwargs)
         
@@ -113,17 +101,13 @@ class TabuSearchOptimizer(OptimizerBase):
                 f"diversification_threshold must be >= 1, got {diversification_threshold}"
             )
         
-        if max_candidates < 1:
-            raise ValueError(f"max_candidates must be >= 1, got {max_candidates}")
-        
         self.tabu_tenure = tabu_tenure
         self.aspiration_threshold = aspiration_threshold
         self.diversification_enabled = diversification_enabled
         self.diversification_threshold = diversification_threshold
-        self.max_candidates = max_candidates
         
-        # Tabu list: queue of (pgid, iteration_added)
-        self._tabu_list: deque = deque()
+        # Tabu dict: pgid -> iteration when it was added (O(1) lookup with lazy expiry)
+        self._tabu_dict: Dict[str, int] = {}
         
         # Best solution tracking
         self._best_score: Optional[float] = None
@@ -173,7 +157,7 @@ class TabuSearchOptimizer(OptimizerBase):
             print(f"Tabu tenure: {self.tabu_tenure} iterations")
             print(f"Aspiration threshold: {self.aspiration_threshold}")
             print(f"Diversification: {'enabled' if self.diversification_enabled else 'disabled'}")
-            print(f"Max candidates per iteration: {self.max_candidates}\n")
+            print()
         
         for iteration in range(self.max_iterations):
             # Check termination conditions
@@ -190,7 +174,7 @@ class TabuSearchOptimizer(OptimizerBase):
             
             if swap is None:
                 if self.verbose:
-                    print(f"\n✓ No beneficial swaps found at iteration {iteration}")
+                    print(f"\n✓ No candidate swaps found at iteration {iteration}")
                 break
             
             # Apply swap
@@ -230,8 +214,8 @@ class TabuSearchOptimizer(OptimizerBase):
                 self._iterations_without_improvement = 0
                 self.stats.algorithm_specific['diversifications'] += 1
                 
-                # Clear tabu list to allow exploration
-                self._tabu_list.clear()
+                # Clear tabu dict to allow exploration
+                self._tabu_dict.clear()
             
             # Track iteration statistics
             self._record_iteration(state)
@@ -290,15 +274,15 @@ class TabuSearchOptimizer(OptimizerBase):
         
         components = self.scorer.calculate_score_with_components(state)
         current_score = components.total
+
+        # Track best non-tabu and best tabu-but-aspirational moves separately
         best_swap = None
-        best_improvement = 0.0
-        best_is_tabu = False
+        best_improvement = float('-inf')
+        best_tabu_swap = None
+        best_tabu_improvement = float('-inf')
 
         donor_set = set(donors)
         receiver_set = set(receivers)
-
-        # Collect candidate swaps
-        candidates_evaluated = 0
 
         for pg in state.pgs.values():
             if pg.primary not in donor_set:
@@ -308,105 +292,67 @@ class TabuSearchOptimizer(OptimizerBase):
                 if candidate_osd not in receiver_set:
                     continue
 
-                # Limit candidates evaluated per iteration
-                if candidates_evaluated >= self.max_candidates:
-                    break
-
-                # Delta scoring: O(1) for OSD/host, O(p) for pool
                 new_score = self.scorer.calculate_swap_delta(
                     state, components, pg.primary, candidate_osd, pg.pool_id
                 )
                 improvement = current_score - new_score
-                
+
                 self.stats.swaps_evaluated += 1
-                candidates_evaluated += 1
-                
-                # Check if this PG is tabu
+
                 is_tabu = self._is_tabu(pg.pgid, iteration)
-                
-                # Determine if swap is valid
-                valid_swap = False
-                
+
                 if not is_tabu:
-                    # Not tabu, consider if it improves
-                    if improvement > 0:
-                        valid_swap = True
+                    # Non-tabu: accept the best move, even if it worsens the score.
+                    # This is the core of tabu search — the tabu list prevents
+                    # cycling, so we can safely take worsening moves to escape
+                    # local optima.
+                    if improvement > best_improvement:
+                        best_improvement = improvement
+                        best_swap = SwapProposal(
+                            pgid=pg.pgid,
+                            old_primary=pg.primary,
+                            new_primary=candidate_osd,
+                            score_improvement=improvement
+                        )
                 else:
-                    # Tabu, but check aspiration criteria
-                    # Allow if significantly better than best known solution
-                    if (self._best_score is not None and 
+                    # Tabu move — only consider if it beats the best-ever score
+                    # (aspiration criterion)
+                    if (self._best_score is not None and
                         new_score < (self._best_score - self.aspiration_threshold)):
-                        valid_swap = True
-                        if self.verbose and improvement > best_improvement:
-                            print(f"  → Aspiration criteria met for PG {pg.pgid} (improvement: {improvement:.6f})")
-                        self.stats.algorithm_specific['tabu_overrides'] += 1
-                
-                # Update best swap if this is better
-                if valid_swap and improvement > best_improvement:
-                    best_improvement = improvement
-                    best_swap = SwapProposal(
-                        pgid=pg.pgid,
-                        old_primary=pg.primary,
-                        new_primary=candidate_osd,
-                        score_improvement=improvement
-                    )
-                    best_is_tabu = is_tabu
-            
-            if candidates_evaluated >= self.max_candidates:
-                break
-        
+                        if improvement > best_tabu_improvement:
+                            best_tabu_improvement = improvement
+                            best_tabu_swap = SwapProposal(
+                                pgid=pg.pgid,
+                                old_primary=pg.primary,
+                                new_primary=candidate_osd,
+                                score_improvement=improvement
+                            )
+                            self.stats.algorithm_specific['tabu_overrides'] += 1
+
+        # Prefer aspirational tabu move if it's better than best non-tabu move
+        if best_tabu_swap is not None and best_tabu_improvement > best_improvement:
+            return best_tabu_swap
         return best_swap
     
     def _is_tabu(self, pgid: str, current_iteration: int) -> bool:
-        """
-        Check if a PG is currently tabu.
-        
-        A PG is tabu if it was moved within the last tabu_tenure iterations.
-        
-        Args:
-            pgid: PG identifier
-            current_iteration: Current iteration number
-        
-        Returns:
-            True if PG is tabu, False otherwise
-        """
-        for tabu_pgid, iteration_added in self._tabu_list:
-            if tabu_pgid == pgid:
-                # Check if still within tenure
-                if current_iteration - iteration_added < self.tabu_tenure:
-                    return True
-        return False
+        """Check if a PG is currently tabu (O(1) lookup with lazy expiry)."""
+        if pgid not in self._tabu_dict:
+            return False
+        if current_iteration - self._tabu_dict[pgid] >= self.tabu_tenure:
+            del self._tabu_dict[pgid]
+            return False
+        return True
     
     def _add_to_tabu_list(self, pgid: str, iteration: int):
-        """
-        Add a PG to the tabu list.
-        
-        Args:
-            pgid: PG identifier
-            iteration: Current iteration number
-        """
-        self._tabu_list.append((pgid, iteration))
-        
-        # Track max tabu list size
-        if len(self._tabu_list) > self.stats.algorithm_specific['tabu_list_max_size']:
-            self.stats.algorithm_specific['tabu_list_max_size'] = len(self._tabu_list)
+        """Add a PG to the tabu dict."""
+        self._tabu_dict[pgid] = iteration
+
+        if len(self._tabu_dict) > self.stats.algorithm_specific['tabu_list_max_size']:
+            self.stats.algorithm_specific['tabu_list_max_size'] = len(self._tabu_dict)
     
     def _clean_tabu_list(self, current_iteration: int):
-        """
-        Remove expired entries from tabu list.
-        
-        Entries older than tabu_tenure iterations are removed.
-        
-        Args:
-            current_iteration: Current iteration number
-        """
-        while self._tabu_list:
-            pgid, iteration_added = self._tabu_list[0]
-            if current_iteration - iteration_added >= self.tabu_tenure:
-                self._tabu_list.popleft()
-            else:
-                # List is ordered by iteration, so we can stop
-                break
+        """No-op: expiry is handled lazily in _is_tabu."""
+        pass
     
     def _copy_state(self, state: ClusterState) -> ClusterState:
         """

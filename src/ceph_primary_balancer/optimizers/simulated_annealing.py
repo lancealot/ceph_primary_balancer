@@ -73,14 +73,13 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
     
     def __init__(
         self,
-        initial_temperature: float = 10.0,
-        final_temperature: float = 0.01,
-        cooling_rate: float = 0.95,
+        initial_temperature: float = 1.0,
+        final_temperature: float = 0.001,
+        cooling_rate: float = 0.997,
         cooling_schedule: str = 'geometric',
         reheating_enabled: bool = True,
-        reheating_threshold: int = 100,
+        reheating_threshold: int = 200,
         reheating_factor: float = 2.0,
-        max_candidates: int = 50,
         random_seed: Optional[int] = None,
         **kwargs
     ):
@@ -106,9 +105,6 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
                                (default: 100). Only used if reheating_enabled=True.
             reheating_factor: Multiplier for temperature during reheating (default: 2.0).
                             Temperature is multiplied by this factor when reheating.
-            max_candidates: Maximum number of candidate swaps to evaluate per
-                          iteration (default: 50). Higher values may find
-                          better swaps but increase computation.
             random_seed: Random seed for reproducibility (default: None).
                         Set to an integer for deterministic results.
             **kwargs: Base optimizer parameters (target_cv, max_iterations, etc.)
@@ -156,10 +152,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
             raise ValueError(
                 f"reheating_factor must be > 1.0, got {reheating_factor}"
             )
-        
-        if max_candidates < 1:
-            raise ValueError(f"max_candidates must be >= 1, got {max_candidates}")
-        
+
         self.initial_temperature = initial_temperature
         self.final_temperature = final_temperature
         self.cooling_rate = cooling_rate
@@ -167,12 +160,10 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         self.reheating_enabled = reheating_enabled
         self.reheating_threshold = reheating_threshold
         self.reheating_factor = reheating_factor
-        self.max_candidates = max_candidates
         self.random_seed = random_seed
-        
-        # Initialize random number generator
-        if random_seed is not None:
-            random.seed(random_seed)
+
+        # Per-instance RNG for deterministic behavior regardless of global state
+        self._rng = random.Random(random_seed)
         
         # Temperature tracking
         self._current_temperature = initial_temperature
@@ -235,7 +226,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
             print(f"Cooling: {self.cooling_schedule} (rate={self.cooling_rate})")
             print(f"Reheating: {'enabled' if self.reheating_enabled else 'disabled'}")
             print(f"Random seed: {self.random_seed if self.random_seed is not None else 'None (non-deterministic)'}")
-            print(f"Max candidates per iteration: {self.max_candidates}\n")
+            print(f"Neighbor selection: random\n")
         
         for iteration in range(self.max_iterations):
             # Record temperature
@@ -255,8 +246,9 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
                     print(f"\n✓ Temperature cooled to minimum at iteration {iteration}")
                 break
             
-            # Find best swap
-            swap = self._find_best_swap(state)
+            # Pick a random neighbor — SA explores by random selection +
+            # probabilistic acceptance, not by picking the best candidate
+            swap = self._find_random_swap(state)
             
             if swap is None:
                 if self.verbose:
@@ -343,73 +335,57 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         
         return swaps_applied
     
-    def _find_best_swap(self, state: ClusterState) -> Optional[SwapProposal]:
+    def _find_random_swap(self, state: ClusterState) -> Optional[SwapProposal]:
         """
-        Find the best swap among candidate moves.
-        
-        Evaluates up to max_candidates swaps and returns the one with
-        the best score improvement (which may be negative).
-        
-        Args:
-            state: Current cluster state
-        
+        Pick a random neighbor by selecting a random donor PG and random
+        receiver from its acting set. This is the correct SA neighbor
+        function — picking the best-of-N biases toward greedy behavior
+        and defeats the purpose of probabilistic acceptance.
+
         Returns:
-            Best SwapProposal or None if no valid swaps
+            A random SwapProposal, or None if no valid swaps exist
         """
         from ..analyzer import identify_donors, identify_receivers
-        
+
         donors = identify_donors(state.osds)
         receivers = identify_receivers(state.osds)
-        
+
         if not donors or not receivers:
             return None
-        
-        components = self.scorer.calculate_score_with_components(state)
-        current_score = components.total
-        best_swap = None
-        best_improvement = float('-inf')
 
         donor_set = set(donors)
         receiver_set = set(receivers)
 
-        # Collect candidate swaps
-        candidates_evaluated = 0
-
+        # Collect all valid (pg, candidate) pairs from donor PGs
+        candidates = []
         for pg in state.pgs.values():
             if pg.primary not in donor_set:
                 continue
-
             for candidate_osd in pg.acting[1:]:
-                if candidate_osd not in receiver_set:
-                    continue
+                if candidate_osd in receiver_set:
+                    candidates.append((pg, candidate_osd))
 
-                # Limit candidates evaluated per iteration
-                if candidates_evaluated >= self.max_candidates:
-                    break
+        if not candidates:
+            return None
 
-                # Delta scoring: O(1) for OSD/host, O(p) for pool
-                new_score = self.scorer.calculate_swap_delta(
-                    state, components, pg.primary, candidate_osd, pg.pool_id
-                )
-                improvement = current_score - new_score
-                
-                self.stats.swaps_evaluated += 1
-                candidates_evaluated += 1
-                
-                # Keep track of best swap (even if negative improvement)
-                if improvement > best_improvement:
-                    best_improvement = improvement
-                    best_swap = SwapProposal(
-                        pgid=pg.pgid,
-                        old_primary=pg.primary,
-                        new_primary=candidate_osd,
-                        score_improvement=improvement
-                    )
-            
-            if candidates_evaluated >= self.max_candidates:
-                break
-        
-        return best_swap
+        # Pick one at random
+        pg, candidate_osd = self._rng.choice(candidates)
+        self.stats.swaps_evaluated += 1
+
+        # Score just this one swap
+        components = self.scorer.calculate_score_with_components(state)
+        current_score = components.total
+        new_score = self.scorer.calculate_swap_delta(
+            state, components, pg.primary, candidate_osd, pg.pool_id
+        )
+        improvement = current_score - new_score
+
+        return SwapProposal(
+            pgid=pg.pgid,
+            old_primary=pg.primary,
+            new_primary=candidate_osd,
+            score_improvement=improvement
+        )
     
     def _accept_swap(self, score_improvement: float) -> bool:
         """
@@ -436,7 +412,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
             acceptance_probability = math.exp(-delta / self._current_temperature)
             
             # Random acceptance
-            if random.random() < acceptance_probability:
+            if self._rng.random() < acceptance_probability:
                 self.stats.algorithm_specific['accepted_worse_moves'] += 1
                 return True
             else:
