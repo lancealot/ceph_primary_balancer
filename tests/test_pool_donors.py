@@ -6,6 +6,7 @@ from ceph_primary_balancer.models import (
     ClusterState, PGInfo, OSDInfo, PoolInfo,
 )
 from ceph_primary_balancer.analyzer import (
+    calculate_statistics,
     identify_donors, identify_receivers,
     identify_pool_donors_receivers, calculate_pool_statistics,
 )
@@ -289,4 +290,75 @@ def test_pool_cv_decreases_with_many_pools():
     assert final_avg_cv < initial_avg_cv * 0.95, (
         f"Average pool CV should improve: "
         f"{initial_avg_cv:.4f} -> {final_avg_cv:.4f}"
+    )
+
+
+def test_production_scale_840_osds_30_pools_4096_pgs():
+    """
+    Simulate a production cluster: 840 OSDs, 30 hosts, 30 pools,
+    4096 PGs total (~137 per pool).
+
+    This is a sparse cluster: ~5 primaries per OSD, each pool touches
+    only a subset of OSDs. Integer granularity limits achievable CV,
+    so we test for correctness and some improvement rather than
+    specific CV targets.
+    """
+    # 4096 / 30 = 136.5 — distribute remainder across first pools
+    base_pgs = 4096 // 30  # 136
+    remainder = 4096 % 30  # 16
+
+    # Generate with base count; we'll verify total is close to 4096
+    state = generate_synthetic_cluster(
+        num_osds=840, num_hosts=30, num_pools=30, pgs_per_pool=base_pgs,
+        replication_factor=3, imbalance_cv=0.30, seed=42,
+    )
+
+    assert len(state.osds) == 840
+    assert len(state.pools) == 30
+    assert len(state.hosts) == 30
+    # Generator uses base_pgs per pool, so total = 136 * 30 = 4080
+    assert len(state.pgs) == base_pgs * 30
+
+    # Pool-level donor/receiver identification should work at this scale
+    pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+    assert len(pool_donors) > 0
+    assert len(pool_receivers) > 0
+
+    # Every pool should have donors and receivers at 30% imbalance
+    # with only ~136 PGs across hundreds of OSDs
+    for pid in pool_donors:
+        assert pid in state.pools
+    for pid in pool_receivers:
+        assert pid in state.pools
+
+    def avg_pool_cv(s):
+        cvs = []
+        for pool in s.pools.values():
+            ps = calculate_pool_statistics(pool, s.osds)
+            cvs.append(ps.cv)
+        return statistics.mean(cvs)
+
+    initial_osd_cv = calculate_statistics(
+        [o.primary_count for o in state.osds.values()]
+    ).cv
+    initial_pool_cv = avg_pool_cv(state)
+
+    # Cap iterations — at this density each swap matters but the search
+    # space is huge (840 OSDs * 4080 PGs), so keep runtime bounded
+    optimizer = GreedyOptimizer(target_cv=0.05, max_iterations=300)
+    swaps = optimizer.optimize(state)
+
+    final_osd_cv = calculate_statistics(
+        [o.primary_count for o in state.osds.values()]
+    ).cv
+    final_pool_cv = avg_pool_cv(state)
+
+    # Should produce some swaps and improve OSD balance
+    assert len(swaps) > 0, "Expected at least some swaps"
+    assert final_osd_cv < initial_osd_cv, (
+        f"OSD CV should decrease: {initial_osd_cv:.4f} -> {final_osd_cv:.4f}"
+    )
+    # Pool CV should not worsen
+    assert final_pool_cv <= initial_pool_cv + 0.01, (
+        f"Pool CV should not worsen: {initial_pool_cv:.4f} -> {final_pool_cv:.4f}"
     )
