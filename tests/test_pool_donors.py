@@ -1,5 +1,7 @@
 """Tests for per-pool donor/receiver identification."""
 
+import statistics
+
 from ceph_primary_balancer.models import (
     ClusterState, PGInfo, OSDInfo, PoolInfo,
 )
@@ -7,7 +9,9 @@ from ceph_primary_balancer.analyzer import (
     identify_donors, identify_receivers,
     identify_pool_donors_receivers, calculate_pool_statistics,
 )
+from ceph_primary_balancer.benchmark.generator import generate_synthetic_cluster
 from ceph_primary_balancer.optimizers.greedy import find_best_swap, apply_swap
+from ceph_primary_balancer.optimizers import GreedyOptimizer
 from ceph_primary_balancer.scorer import Scorer
 
 
@@ -162,3 +166,127 @@ def test_pool_donors_empty_for_balanced_pools():
 
     assert 1 not in pool_donors
     assert 1 not in pool_receivers
+
+
+# --- Multi-pool stress tests using synthetic cluster generator ---
+
+
+def test_pool_donors_identified_across_many_pools():
+    """With 20 pools and high imbalance, pool-level donors should be found."""
+    state = generate_synthetic_cluster(
+        num_osds=60, num_hosts=6, num_pools=20, pgs_per_pool=200,
+        replication_factor=3, imbalance_cv=0.40, seed=99,
+    )
+    pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+    # With 20 pools and 40% CV imbalance, most pools should have donors
+    assert len(pool_donors) > 0, "Expected pool-level donors with 40% imbalance"
+    assert len(pool_receivers) > 0, "Expected pool-level receivers with 40% imbalance"
+
+
+def test_optimizer_improves_all_pools_in_large_cluster():
+    """
+    60 OSDs, 20 pools: every pool's CV should decrease (or stay low)
+    after optimization with pool-level donor/receiver identification.
+    """
+    state = generate_synthetic_cluster(
+        num_osds=60, num_hosts=6, num_pools=20, pgs_per_pool=200,
+        replication_factor=3, imbalance_cv=0.35, seed=42,
+    )
+
+    # Record initial per-pool CVs
+    initial_cvs = {}
+    for pid, pool in state.pools.items():
+        stats = calculate_pool_statistics(pool, state.osds)
+        initial_cvs[pid] = stats.cv
+
+    optimizer = GreedyOptimizer(target_cv=0.05, max_iterations=1000)
+    swaps = optimizer.optimize(state)
+
+    # Record final per-pool CVs
+    improved = 0
+    worsened = 0
+    for pid, pool in state.pools.items():
+        stats = calculate_pool_statistics(pool, state.osds)
+        if stats.cv < initial_cvs[pid] - 0.001:
+            improved += 1
+        elif stats.cv > initial_cvs[pid] + 0.01:
+            worsened += 1
+
+    # Majority of pools should improve, none should worsen significantly
+    assert improved > len(state.pools) // 2, (
+        f"Only {improved}/{len(state.pools)} pools improved"
+    )
+    assert worsened == 0, f"{worsened} pools worsened significantly"
+
+
+def test_pool_donors_scale_to_many_pools():
+    """
+    Verify identify_pool_donors_receivers handles 50 pools correctly:
+    returns results for each pool independently, no cross-contamination.
+    """
+    state = generate_synthetic_cluster(
+        num_osds=100, num_hosts=10, num_pools=50, pgs_per_pool=100,
+        replication_factor=3, imbalance_cv=0.30, seed=7,
+    )
+    pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+    for pid in pool_donors:
+        assert pid in state.pools, f"Donor pool {pid} not in state.pools"
+        # Pool-level donors must actually participate in this pool
+        pool = state.pools[pid]
+        for osd_id in pool_donors[pid]:
+            # OSD must have PGs in this pool (appears in some acting set)
+            has_pg = any(
+                osd_id in pg.acting
+                for pg in state.pgs.values()
+                if pg.pool_id == pid
+            )
+            assert has_pg, (
+                f"OSD {osd_id} marked as donor for pool {pid} but has no PGs there"
+            )
+
+    for pid in pool_receivers:
+        assert pid in state.pools
+        for osd_id in pool_receivers[pid]:
+            has_pg = any(
+                osd_id in pg.acting
+                for pg in state.pgs.values()
+                if pg.pool_id == pid
+            )
+            assert has_pg, (
+                f"OSD {osd_id} marked as receiver for pool {pid} but has no PGs there"
+            )
+
+
+def test_pool_cv_decreases_with_many_pools():
+    """
+    30 pools, 80 OSDs: average pool CV should meaningfully decrease.
+    This catches regressions where pool-level candidates are generated
+    but the scorer doesn't actually pick pool-improving swaps.
+    """
+    state = generate_synthetic_cluster(
+        num_osds=80, num_hosts=8, num_pools=30, pgs_per_pool=150,
+        replication_factor=3, imbalance_cv=0.35, seed=123,
+    )
+
+    def avg_pool_cv(s):
+        cvs = []
+        for pool in s.pools.values():
+            stats = calculate_pool_statistics(pool, s.osds)
+            cvs.append(stats.cv)
+        return statistics.mean(cvs)
+
+    initial_avg_cv = avg_pool_cv(state)
+
+    optimizer = GreedyOptimizer(target_cv=0.05, max_iterations=1000)
+    optimizer.optimize(state)
+
+    final_avg_cv = avg_pool_cv(state)
+    # With integer granularity (few PGs per OSD per pool) and OSD-level
+    # termination, pool CV won't drop as dramatically as OSD CV.
+    # Assert meaningful improvement (>5%), not a specific target.
+    assert final_avg_cv < initial_avg_cv * 0.95, (
+        f"Average pool CV should improve: "
+        f"{initial_avg_cv:.4f} -> {final_avg_cv:.4f}"
+    )
