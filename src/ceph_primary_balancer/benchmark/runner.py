@@ -11,7 +11,7 @@ from dataclasses import dataclass, asdict
 from typing import Dict, List, Any, Optional, Tuple
 from pathlib import Path
 
-from .generator import generate_synthetic_cluster, generate_ec_pool
+from .generator import generate_synthetic_cluster, generate_ec_pool, generate_multi_pool_scenario
 from .profiler import (
     profile_optimization,
     benchmark_scalability,
@@ -30,6 +30,7 @@ from .quality_analyzer import (
 from .scenarios import (
     PERFORMANCE_SCENARIOS,
     QUALITY_SCENARIOS,
+    PRODUCTION_SCENARIOS,
     SCALABILITY_SCENARIOS,
     STABILITY_SCENARIOS,
     get_scenario_by_name
@@ -155,11 +156,14 @@ class BenchmarkSuite:
                 # Generate cluster
                 params = scenario.get('params', {})
                 num_osds = params.get('num_osds', 10)
-                num_pgs = params.get('pgs_per_pool', 100) * params.get('num_pools', 1)
+                if 'pools_config' in params:
+                    num_pgs = sum(p.get('pgs', 512) for p in params['pools_config'])
+                else:
+                    num_pgs = params.get('pgs_per_pool', 100) * params.get('num_pools', 1)
                 print(f"({num_osds} OSDs, {num_pgs} PGs)...", end=' ', flush=True)
-                
+
                 state = self._generate_cluster_from_scenario(scenario)
-                
+
                 # Profile optimization
                 perf, mem = profile_optimization(
                     state=state,
@@ -194,9 +198,12 @@ class BenchmarkSuite:
                 # Generate cluster
                 params = scenario.get('params', {})
                 num_osds = params.get('num_osds', 10)
-                num_pgs = params.get('pgs_per_pool', 100) * params.get('num_pools', 1)
+                if 'pools_config' in params:
+                    num_pgs = sum(p.get('pgs', 512) for p in params['pools_config'])
+                else:
+                    num_pgs = params.get('pgs_per_pool', 100) * params.get('num_pools', 1)
                 print(f"({num_osds} OSDs, {num_pgs} PGs)...", end=' ', flush=True)
-                
+
                 original_state = self._generate_cluster_from_scenario(scenario)
                 optimized_state = copy.deepcopy(original_state)
                 
@@ -306,9 +313,20 @@ class BenchmarkSuite:
         """
         params = scenario.get('params', scenario)
         seed = self.config.get('seed', 42)
-        
-        # Check if EC pool
-        if params.get('type') == 'ec' or 'k' in params:
+
+        # Check scenario type
+        scenario_type = scenario.get('type', params.get('type', ''))
+
+        if scenario_type == 'multi_pool' or 'pools_config' in params:
+            # Mixed pool scenario with per-pool configurations
+            return generate_multi_pool_scenario(
+                num_pools=len(params['pools_config']),
+                pools_config=params['pools_config'],
+                num_osds=params.get('num_osds', 100),
+                num_hosts=params.get('num_hosts', 10),
+                seed=seed
+            )
+        elif scenario_type == 'ec' or 'k' in params:
             return generate_ec_pool(
                 k=params.get('k', 8),
                 m=params.get('m', 3),

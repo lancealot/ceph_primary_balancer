@@ -82,6 +82,50 @@ DATASET_XLARGE_STRESS = {
     'imbalance_pattern': 'random'
 }
 
+# Production-realistic scenario modeled after a real HDD cluster:
+# ~840 OSDs across 60 hosts, ~28 pools sharing the same OSD set,
+# mix of EC size-20 and replicated size-3/5 pools, PG counts from 16 to 2048.
+# Key characteristics this captures that other scenarios miss:
+#   - Sparse PGs/OSD ratio (~6 vs benchmark typical ~100)
+#   - Wildly varying pool sizes (16 vs 2048)
+#   - EC pools with 20 OSDs per PG (many candidates for primary swap)
+#   - All pools share the same OSD set (cross-pool interference)
+PRODUCTION_REALISTIC_POOLS = [
+    # Large EC pools (bulk storage) — EC 16+4, size 20
+    {'name': 'bulk-ec-1', 'pgs': 2048, 'replication': 20, 'imbalance_cv': 0.25, 'pattern': 'random'},
+    {'name': 'bulk-ec-2', 'pgs': 2048, 'replication': 20, 'imbalance_cv': 0.30, 'pattern': 'random'},
+    {'name': 'bulk-ec-3', 'pgs': 2048, 'replication': 20, 'imbalance_cv': 0.20, 'pattern': 'random'},
+    # Medium replicated pools (higher durability workloads) — size 5
+    {'name': 'replicated-5a', 'pgs': 512, 'replication': 5, 'imbalance_cv': 0.35, 'pattern': 'random'},
+    {'name': 'replicated-5b', 'pgs': 256, 'replication': 5, 'imbalance_cv': 0.30, 'pattern': 'random'},
+    {'name': 'replicated-5c', 'pgs': 256, 'replication': 5, 'imbalance_cv': 0.25, 'pattern': 'random'},
+    # Small replicated pools (rgw index, meta, etc.) — size 3
+    {'name': 'rgw-index-1', 'pgs': 64, 'replication': 3, 'imbalance_cv': 0.40, 'pattern': 'random'},
+    {'name': 'rgw-index-2', 'pgs': 64, 'replication': 3, 'imbalance_cv': 0.35, 'pattern': 'random'},
+    {'name': 'rgw-data-1', 'pgs': 128, 'replication': 3, 'imbalance_cv': 0.30, 'pattern': 'random'},
+    {'name': 'rgw-data-2', 'pgs': 128, 'replication': 3, 'imbalance_cv': 0.25, 'pattern': 'random'},
+    {'name': 'meta-1', 'pgs': 32, 'replication': 3, 'imbalance_cv': 0.45, 'pattern': 'concentrated'},
+    {'name': 'meta-2', 'pgs': 32, 'replication': 3, 'imbalance_cv': 0.40, 'pattern': 'concentrated'},
+    {'name': 'meta-3', 'pgs': 16, 'replication': 3, 'imbalance_cv': 0.50, 'pattern': 'concentrated'},
+    {'name': 'meta-4', 'pgs': 16, 'replication': 3, 'imbalance_cv': 0.45, 'pattern': 'concentrated'},
+    # Additional medium pools
+    {'name': 'project-1', 'pgs': 512, 'replication': 3, 'imbalance_cv': 0.30, 'pattern': 'random'},
+    {'name': 'project-2', 'pgs': 256, 'replication': 3, 'imbalance_cv': 0.25, 'pattern': 'random'},
+    {'name': 'project-3', 'pgs': 128, 'replication': 3, 'imbalance_cv': 0.35, 'pattern': 'random'},
+    {'name': 'scratch', 'pgs': 1024, 'replication': 3, 'imbalance_cv': 0.20, 'pattern': 'random'},
+    # Tiny pools (cephfs meta, rgw meta)
+    {'name': 'cephfs-meta-1', 'pgs': 16, 'replication': 3, 'imbalance_cv': 0.50, 'pattern': 'random'},
+    {'name': 'cephfs-meta-2', 'pgs': 16, 'replication': 3, 'imbalance_cv': 0.45, 'pattern': 'random'},
+    {'name': 'rgw-meta-1', 'pgs': 32, 'replication': 3, 'imbalance_cv': 0.40, 'pattern': 'random'},
+    {'name': 'rgw-meta-2', 'pgs': 32, 'replication': 3, 'imbalance_cv': 0.35, 'pattern': 'random'},
+    {'name': 'rgw-log', 'pgs': 32, 'replication': 3, 'imbalance_cv': 0.30, 'pattern': 'random'},
+    {'name': 'misc-1', 'pgs': 64, 'replication': 3, 'imbalance_cv': 0.30, 'pattern': 'random'},
+    {'name': 'misc-2', 'pgs': 64, 'replication': 3, 'imbalance_cv': 0.25, 'pattern': 'random'},
+    {'name': 'misc-3', 'pgs': 32, 'replication': 3, 'imbalance_cv': 0.35, 'pattern': 'random'},
+    {'name': 'misc-4', 'pgs': 16, 'replication': 3, 'imbalance_cv': 0.40, 'pattern': 'random'},
+    {'name': 'misc-5', 'pgs': 16, 'replication': 3, 'imbalance_cv': 0.45, 'pattern': 'random'},
+]
+
 
 # Performance benchmark scenarios
 PERFORMANCE_SCENARIOS = [
@@ -259,6 +303,21 @@ STABILITY_SCENARIOS = [
 ]
 
 
+# Production-realistic scenarios (modeled after real clusters)
+PRODUCTION_SCENARIOS = [
+    {
+        'name': 'production_hdd_cluster',
+        'description': 'Real-world HDD cluster: 840 OSDs, 28 mixed pools (EC size-20, rep size-3/5), sparse PGs/OSD',
+        'type': 'multi_pool',
+        'params': {
+            'num_osds': 840,
+            'num_hosts': 60,
+            'pools_config': PRODUCTION_REALISTIC_POOLS,
+        }
+    },
+]
+
+
 # Edge case scenarios
 EDGE_CASE_SCENARIOS = [
     {
@@ -324,6 +383,7 @@ def get_all_scenarios() -> Dict[str, List[Dict[str, Any]]]:
     return {
         'performance': PERFORMANCE_SCENARIOS,
         'quality': QUALITY_SCENARIOS,
+        'production': PRODUCTION_SCENARIOS,
         'scalability': SCALABILITY_SCENARIOS,
         'stability': STABILITY_SCENARIOS,
         'edge_cases': EDGE_CASE_SCENARIOS
@@ -380,6 +440,7 @@ def get_standard_suite() -> List[Dict[str, Any]]:
         QUALITY_SCENARIOS[0],      # replicated_3_moderate
         QUALITY_SCENARIOS[1],      # replicated_3_severe
         QUALITY_SCENARIOS[3],      # multi_pool_complex
+        PRODUCTION_SCENARIOS[0],   # production_hdd_cluster
     ]
 
 
