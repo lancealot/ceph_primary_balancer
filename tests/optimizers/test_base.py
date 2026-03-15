@@ -330,7 +330,7 @@ class TestOptimizerBaseHelpers(unittest.TestCase):
     def test_check_termination_target_cv(self):
         """Test termination check for target CV."""
         from ceph_primary_balancer.models import OSDInfo, PGInfo
-        
+
         # Create perfectly balanced state
         balanced_state = ClusterState(
             pgs={
@@ -344,11 +344,110 @@ class TestOptimizerBaseHelpers(unittest.TestCase):
             hosts={},
             pools={}
         )
-        
+
         optimizer = DummyOptimizer(target_cv=0.10)
-        
+
         # Perfectly balanced state should terminate
         self.assertTrue(optimizer._check_termination(balanced_state, 0))
+
+    def test_check_termination_checks_all_enabled_dimensions(self):
+        """Termination requires ALL enabled dimensions to be below target CV."""
+        from ceph_primary_balancer.models import OSDInfo, PGInfo, HostInfo, PoolInfo
+
+        # OSD-balanced (all have 2 primaries) but host-imbalanced:
+        # host1 has 1 OSD (2 primaries), host2 has 3 OSDs (6 primaries)
+        state = ClusterState(
+            pgs={
+                '1.0': PGInfo(pgid='1.0', pool_id=1, acting=[0, 1]),
+                '1.1': PGInfo(pgid='1.1', pool_id=1, acting=[0, 2]),
+                '1.2': PGInfo(pgid='1.2', pool_id=1, acting=[1, 0]),
+                '1.3': PGInfo(pgid='1.3', pool_id=1, acting=[1, 3]),
+                '1.4': PGInfo(pgid='1.4', pool_id=1, acting=[2, 0]),
+                '1.5': PGInfo(pgid='1.5', pool_id=1, acting=[2, 3]),
+                '1.6': PGInfo(pgid='1.6', pool_id=1, acting=[3, 0]),
+                '1.7': PGInfo(pgid='1.7', pool_id=1, acting=[3, 1]),
+            },
+            osds={
+                0: OSDInfo(osd_id=0, host='host1', primary_count=2, total_pg_count=4),
+                1: OSDInfo(osd_id=1, host='host2', primary_count=2, total_pg_count=4),
+                2: OSDInfo(osd_id=2, host='host2', primary_count=2, total_pg_count=4),
+                3: OSDInfo(osd_id=3, host='host2', primary_count=2, total_pg_count=4),
+            },
+            hosts={
+                'host1': HostInfo(hostname='host1', osd_ids=[0], primary_count=2),
+                'host2': HostInfo(hostname='host2', osd_ids=[1, 2, 3], primary_count=6),
+            },
+            pools={}
+        )
+
+        # OSD CV = 0 (all have 2), Host CV = high (2 vs 6)
+        # With osd+host enabled, should NOT terminate because host CV is high
+        scorer = Scorer(w_osd=0.5, w_host=0.5, w_pool=0.0, enabled_levels=['osd', 'host'])
+        optimizer = DummyOptimizer(target_cv=0.10, scorer=scorer, enabled_levels=['osd', 'host'])
+        self.assertFalse(optimizer._check_termination(state, 0))
+
+        # With only osd enabled, should terminate because OSD CV = 0
+        scorer_osd = Scorer(w_osd=1.0, w_host=0.0, w_pool=0.0, enabled_levels=['osd'])
+        optimizer_osd = DummyOptimizer(target_cv=0.10, scorer=scorer_osd, enabled_levels=['osd'])
+        self.assertTrue(optimizer_osd._check_termination(state, 0))
+
+    def test_check_termination_checks_pool_dimension(self):
+        """Termination checks pool CV when pool dimension is enabled."""
+        from ceph_primary_balancer.models import OSDInfo, PGInfo, PoolInfo
+
+        # OSDs balanced (2 each), but pool is imbalanced (osd0 has all pool primaries)
+        state = ClusterState(
+            pgs={
+                '1.0': PGInfo(pgid='1.0', pool_id=1, acting=[0, 1]),
+                '1.1': PGInfo(pgid='1.1', pool_id=1, acting=[0, 1]),
+                '2.0': PGInfo(pgid='2.0', pool_id=2, acting=[1, 0]),
+                '2.1': PGInfo(pgid='2.1', pool_id=2, acting=[1, 0]),
+            },
+            osds={
+                0: OSDInfo(osd_id=0, host='host1', primary_count=2, total_pg_count=4),
+                1: OSDInfo(osd_id=1, host='host1', primary_count=2, total_pg_count=4),
+            },
+            hosts={},
+            pools={
+                1: PoolInfo(pool_id=1, pool_name='pool1', pg_count=2,
+                           primary_counts={0: 2, 1: 0}),
+                2: PoolInfo(pool_id=2, pool_name='pool2', pg_count=2,
+                           primary_counts={0: 0, 1: 2}),
+            }
+        )
+
+        # OSD CV = 0, pool CV is high (each pool has all primaries on one OSD)
+        scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+        optimizer = DummyOptimizer(target_cv=0.10, scorer=scorer, enabled_levels=['osd', 'pool'])
+        self.assertFalse(optimizer._check_termination(state, 0))
+
+    def test_check_termination_all_dimensions_balanced(self):
+        """Terminates when all enabled dimensions are below target."""
+        from ceph_primary_balancer.models import OSDInfo, PGInfo, HostInfo, PoolInfo
+
+        # Everything balanced
+        state = ClusterState(
+            pgs={
+                '1.0': PGInfo(pgid='1.0', pool_id=1, acting=[0, 1]),
+                '1.1': PGInfo(pgid='1.1', pool_id=1, acting=[1, 0]),
+            },
+            osds={
+                0: OSDInfo(osd_id=0, host='host1', primary_count=1, total_pg_count=2),
+                1: OSDInfo(osd_id=1, host='host2', primary_count=1, total_pg_count=2),
+            },
+            hosts={
+                'host1': HostInfo(hostname='host1', osd_ids=[0], primary_count=1),
+                'host2': HostInfo(hostname='host2', osd_ids=[1], primary_count=1),
+            },
+            pools={
+                1: PoolInfo(pool_id=1, pool_name='pool1', pg_count=2,
+                           primary_counts={0: 1, 1: 1}),
+            }
+        )
+
+        scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2, enabled_levels=['osd', 'host', 'pool'])
+        optimizer = DummyOptimizer(target_cv=0.10, scorer=scorer, enabled_levels=['osd', 'host', 'pool'])
+        self.assertTrue(optimizer._check_termination(state, 0))
 
 
 if __name__ == '__main__':

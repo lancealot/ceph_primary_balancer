@@ -104,11 +104,11 @@ Per-pool donor/receiver identification implemented in `analyzer.identify_pool_do
 
 Composite score now uses CV (coefficient of variation = std/mean) for each dimension instead of raw variance. CV is scale-invariant, so dimensions are comparable regardless of their absolute magnitude. Score = `w_osd * osd_cv + w_host * host_cv + w_pool * avg_pool_cv`.
 
+### ~~Minor: Termination only checks OSD dimension~~ FIXED
+
+Termination now checks ALL enabled dimensions (OSD, host, pool). The optimizer continues until every enabled dimension has CV at or below target_cv. The CLI pre-optimization check also considers all enabled dimensions before skipping optimization.
+
 ## Remaining Algorithmic Issues
-
-### Minor: Termination only checks OSD dimension
-
-Even with host and pool optimization enabled, the optimizer terminates when OSD CV drops below target. Host and pool dimensions are ignored for termination.
 
 ### Minor: No per-pool optimization loop
 
@@ -126,11 +126,11 @@ The optimizer finds the single globally-best swap per iteration. A per-pool loop
 ### Phase 1: Clean Slate — DONE
 Removed `plans/`, deprecated `optimizer.py` wrapper, stale docs, release notes files, one-off scripts.
 
-### Phase 2: Fix the algorithm — 3 of 5 DONE
+### Phase 2: Fix the algorithm — 4 of 5 DONE
 1. ~~Make swap evaluation O(1) using delta scoring~~ DONE
 2. ~~Implement per-pool donor/receiver identification~~ DONE
 3. ~~Normalize dimensional scores using CV~~ DONE
-4. Fix termination to check all enabled dimensions
+4. ~~Fix termination to check all enabled dimensions~~ DONE
 5. Design the multi-dimension loop: for each pool → find pool-level swaps → score globally → pick best
 
 ### Phase 3: Validate with benchmarks — IN PROGRESS

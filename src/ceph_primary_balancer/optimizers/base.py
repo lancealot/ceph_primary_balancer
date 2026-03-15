@@ -181,35 +181,37 @@ class OptimizerBase(ABC):
         self.stats.execution_time = time.time() - self._start_time
     
     def _check_termination(self, state: ClusterState, iteration: int) -> bool:
-        """
-        Check if optimization should terminate.
-        
-        Common termination conditions:
-        - Target CV achieved at OSD level
-        - Maximum iterations reached
-        - No more improvement possible (algorithm-specific)
-        
-        Args:
-            state: Current cluster state
-            iteration: Current iteration number
-            
-        Returns:
-            True if optimization should stop
+        """Check if optimization should terminate.
+
+        Terminates when max iterations reached or ALL enabled dimensions
+        have CV at or below target_cv.
         """
         from ..analyzer import calculate_statistics
-        
-        # Check max iterations
+
         if iteration >= self.max_iterations:
             return True
-        
-        # Check target CV at OSD level
-        primary_counts = [osd.primary_count for osd in state.osds.values()]
-        stats = calculate_statistics(primary_counts)
-        
-        if stats.cv <= self.target_cv:
-            return True
-        
-        return False
+
+        enabled = self.scorer.enabled_levels
+
+        if 'osd' in enabled:
+            counts = [osd.primary_count for osd in state.osds.values()]
+            if counts and calculate_statistics(counts).cv > self.target_cv:
+                return False
+
+        if 'host' in enabled and state.hosts:
+            counts = [h.primary_count for h in state.hosts.values()]
+            if counts and calculate_statistics(counts).cv > self.target_cv:
+                return False
+
+        if 'pool' in enabled and state.pools:
+            from ..analyzer import get_pool_statistics_summary
+            pool_stats = get_pool_statistics_summary(state)
+            if pool_stats:
+                avg_cv = sum(ps.cv for ps in pool_stats.values()) / len(pool_stats)
+                if avg_cv > self.target_cv:
+                    return False
+
+        return True
     
     def _record_iteration(self, state: ClusterState):
         """
