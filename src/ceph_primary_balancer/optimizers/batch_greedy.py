@@ -183,28 +183,39 @@ class BatchGreedyOptimizer(OptimizerBase):
         Returns:
             List of SwapProposal objects sorted by improvement (best first)
         """
-        from ..analyzer import identify_donors, identify_receivers
-        
+        from ..analyzer import identify_donors, identify_receivers, identify_pool_donors_receivers
+
         donors = identify_donors(state.osds)
         receivers = identify_receivers(state.osds)
-        
-        if not donors or not receivers:
+        pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+        if not donors and not pool_donors:
             return []
-        
-        current_score = self.scorer.calculate_score(state)
+
+        components = self.scorer.calculate_score_with_components(state)
+        current_score = components.total
         candidates = []
-        
-        # Evaluate all possible swaps
+
+        donor_set = set(donors) if donors else set()
+        receiver_set = set(receivers) if receivers else set()
+
+        # Evaluate all possible swaps using delta scoring
         for pg in state.pgs.values():
-            if pg.primary not in donors:
+            pool_id = pg.pool_id
+            is_donor = (pg.primary in donor_set or
+                        pg.primary in pool_donors.get(pool_id, set()))
+            if not is_donor:
                 continue
-            
+
             for candidate_osd in pg.acting[1:]:
-                if candidate_osd not in receivers:
+                is_receiver = (candidate_osd in receiver_set or
+                               candidate_osd in pool_receivers.get(pool_id, set()))
+                if not is_receiver:
                     continue
-                
-                # Simulate swap and calculate improvement
-                new_score = self._simulate_swap_score(state, pg.pgid, candidate_osd)
+
+                new_score = self.scorer.calculate_swap_delta(
+                    state, components, pg.primary, candidate_osd, pg.pool_id
+                )
                 improvement = current_score - new_score
                 
                 if improvement > 0:

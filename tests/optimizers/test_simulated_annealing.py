@@ -124,14 +124,13 @@ class TestSimulatedAnnealingInitialization:
     def test_default_initialization(self):
         """Test default parameter values."""
         optimizer = SimulatedAnnealingOptimizer()
-        assert optimizer.initial_temperature == 10.0
-        assert optimizer.final_temperature == 0.01
-        assert optimizer.cooling_rate == 0.95
+        assert optimizer.initial_temperature == 1.0
+        assert optimizer.final_temperature == 0.001
+        assert optimizer.cooling_rate == 0.997
         assert optimizer.cooling_schedule == 'geometric'
         assert optimizer.reheating_enabled is True
-        assert optimizer.reheating_threshold == 100
+        assert optimizer.reheating_threshold == 200
         assert optimizer.reheating_factor == 2.0
-        assert optimizer.max_candidates == 50
         assert optimizer.random_seed is None
         assert optimizer.target_cv == 0.10
         assert "Simulated Annealing" in optimizer.algorithm_name
@@ -253,11 +252,6 @@ class TestSimulatedAnnealingInitialization:
         
         with pytest.raises(ValueError, match="reheating_factor must be > 1.0"):
             SimulatedAnnealingOptimizer(reheating_factor=0.5)
-    
-    def test_invalid_max_candidates(self):
-        """Test that invalid max_candidates raises error."""
-        with pytest.raises(ValueError, match="max_candidates must be >= 1"):
-            SimulatedAnnealingOptimizer(max_candidates=0)
     
     def test_algorithm_specific_stats_initialized(self):
         """Test that algorithm-specific statistics are initialized."""
@@ -503,9 +497,8 @@ class TestOptimization:
         initial_stats = calculate_statistics(initial_counts)
         
         optimizer = SimulatedAnnealingOptimizer(
-            initial_temperature=10.0,
+            initial_temperature=1.0,
             target_cv=0.10,
-            max_candidates=30,
             random_seed=42
         )
         swaps = optimizer.optimize(simple_state)

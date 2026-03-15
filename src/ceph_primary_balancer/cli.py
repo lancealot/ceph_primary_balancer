@@ -15,7 +15,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 from . import collector, analyzer, script_generator
-from .optimizers.greedy import GreedyOptimizer, apply_swap
+from .optimizers import OptimizerRegistry
+from .optimizers.greedy import apply_swap
 from .scorer import Scorer
 from .exporter import JSONExporter
 from .reporter import Reporter
@@ -262,12 +263,41 @@ def main():
         help='How often to recalculate dynamic weights in iterations (default: 10). '
              'Only used if --dynamic-weights is enabled.'
     )
-    
+
+    # Algorithm selection
+    available_algos = OptimizerRegistry.list_algorithms()
+    parser.add_argument(
+        '--algorithm',
+        type=str,
+        default='greedy',
+        choices=available_algos,
+        help=f'Optimization algorithm (default: greedy). '
+             f'Available: {", ".join(available_algos)}'
+    )
+
+    parser.add_argument(
+        '--list-algorithms',
+        action='store_true',
+        help='List available optimization algorithms with descriptions and exit'
+    )
+
     args = parser.parse_args()
     
     # Handle --list-optimization-strategies flag
     if args.list_optimization_strategies:
         print_optimization_strategies()
+        sys.exit(0)
+
+    # Handle --list-algorithms flag
+    if args.list_algorithms:
+        print("\nAvailable Optimization Algorithms:")
+        print("=" * 60)
+        for name in OptimizerRegistry.list_algorithms():
+            info = OptimizerRegistry.get_algorithm_info(name)
+            det = "deterministic" if info['is_deterministic'] else "non-deterministic"
+            print(f"\n  {name}")
+            print(f"    {info['algorithm_name']} ({det})")
+        print()
         sys.exit(0)
     
     # Phase 8: Detect and report offline mode
@@ -553,8 +583,10 @@ def main():
     
     # Store original state for reporting (before optimization modifies it)
     original_state = copy.deepcopy(state)
-    
-    greedy = GreedyOptimizer(
+
+    print(f"Algorithm: {args.algorithm}")
+    optimizer = OptimizerRegistry.get_optimizer(
+        args.algorithm,
         target_cv=args.target_cv,
         scorer=scorer,
         pool_filter=args.pool,
@@ -564,7 +596,7 @@ def main():
         weight_update_interval=args.weight_update_interval,
         verbose=True,
     )
-    swaps = greedy.optimize(state)
+    swaps = optimizer.optimize(state)
     
     # Step 5: Handle case where no swaps were found
     if not swaps:

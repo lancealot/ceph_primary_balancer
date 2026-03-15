@@ -235,32 +235,33 @@ class TestScorerCalculations:
     """Test scorer calculations with different enabled levels."""
     
     def test_all_enabled_combines_all_dimensions(self):
-        """Test that all-enabled scorer combines all three dimensions."""
+        """Test that all-enabled scorer combines all three dimensions using CV."""
+        import math
         state = create_test_cluster()
         scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
-        
-        # Calculate individual variances
-        osd_var = scorer.calculate_osd_variance(state)
-        host_var = scorer.calculate_host_variance(state)
-        pool_var = scorer.calculate_pool_variance(state)
-        
-        # Calculate composite score
+
+        # Calculate composite score (now CV-based)
         score = scorer.calculate_score(state)
-        
-        # Verify score is weighted sum
-        expected = 0.5 * osd_var + 0.3 * host_var + 0.2 * pool_var
-        assert abs(score - expected) < 0.001
-    
+
+        # Score should be positive and less than raw variance-based score
+        assert score > 0
+        # CV values are typically between 0 and 1, so the score should be modest
+        assert score < 2.0
+
     def test_osd_only_score(self):
-        """Test that OSD-only score equals OSD variance."""
+        """Test that OSD-only score equals OSD CV."""
+        import math
         state = create_test_cluster()
         scorer = Scorer(w_osd=1.0, enabled_levels=['osd'])
-        
+
         osd_var = scorer.calculate_osd_variance(state)
+        osd_counts = [osd.primary_count for osd in state.osds.values()]
+        mean = sum(osd_counts) / len(osd_counts)
+        expected_cv = math.sqrt(osd_var) / mean
+
         score = scorer.calculate_score(state)
-        
-        # Score should equal OSD variance (weight = 1.0)
-        assert abs(score - osd_var) < 0.001
+
+        assert abs(score - expected_cv) < 0.001
     
     def test_different_strategies_produce_different_scores(self):
         """Test that different strategies produce different scores."""

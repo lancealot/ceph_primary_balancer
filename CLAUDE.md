@@ -15,7 +15,7 @@
 PYTHONPATH=src pytest tests/ -v
 
 # Run a single test file
-PYTHONPATH=src pytest tests/test_optimizer.py -v
+PYTHONPATH=src pytest tests/test_scorer.py -v
 
 # Run tests with coverage
 PYTHONPATH=src pytest tests/ -v --cov=src/ceph_primary_balancer --cov-report=term-missing
@@ -27,21 +27,26 @@ PYTHONPATH=src python3 -m ceph_primary_balancer.benchmark_cli quick
 PYTHONPATH=src python3 -m ceph_primary_balancer.cli --help
 ```
 
-## Architecture (Target — post-simplification)
+## Architecture
 
 ```
 src/ceph_primary_balancer/
 ├── models.py          # Data models: OSDInfo, PoolInfo, HostInfo, PGInfo, ClusterState, SwapProposal
 ├── collector.py       # Gathers data from Ceph CLI (ceph osd tree, ceph pg dump)
-├── analyzer.py        # Statistics, donor/receiver identification
-├── scorer.py          # Composite scoring across OSD/host/pool dimensions
-├── optimizer.py       # The optimization algorithm (single file, one strategy done well)
+├── analyzer.py        # Statistics, donor/receiver identification (OSD-level and per-pool)
+├── scorer.py          # CV-based composite scoring across OSD/host/pool dimensions
+├── optimizers/        # Optimization algorithms
+│   ├── base.py        # OptimizerBase ABC, OptimizerRegistry, stats tracking
+│   ├── greedy.py      # Greedy optimizer (primary algorithm) with O(1) delta scoring
+│   ├── batch_greedy.py
+│   ├── tabu_search.py
+│   └── simulated_annealing.py
 ├── reporter.py        # Terminal output
 ├── exporter.py        # JSON export
 ├── script_generator.py # Generates bash scripts with pg-upmap-primary commands
 ├── config.py          # Config file loading
 ├── cli.py             # CLI entry point
-└── benchmark/         # Benchmark framework (kept lean)
+└── benchmark/         # Benchmark framework
 ```
 
 ## Development Principles
@@ -85,60 +90,60 @@ src/ceph_primary_balancer/
 - One concern per commit. Don't mix refactoring with feature work.
 - No generated files in the repo (benchmark results, HTML reports, comparison outputs).
 
-## Known Algorithmic Issues (Must Fix)
+## Completed Algorithmic Fixes
 
-These are the real problems, ordered by impact:
+### ~~Critical: Pool balancing is broken by design~~ FIXED
 
-### Critical: Pool balancing is broken by design
+Per-pool donor/receiver identification implemented in `analyzer.identify_pool_donors_receivers()`. The optimizer now generates swap candidates from both OSD-level and pool-level donors/receivers, so pool-imbalanced swaps are proposed even when involved OSDs are near the global mean.
 
-Donors and receivers are identified **only at the OSD level** using global primary counts. The pool variance component of the score influences swap *selection* but cannot create swap *candidates* that the OSD-level analysis wouldn't already propose. If a pool is imbalanced but its OSDs are near the global mean, no swaps will ever be proposed for that pool. **Pool-level balancing is decorative, not functional.**
+### ~~Critical: Swap evaluation is O(N) when it should be O(1)~~ FIXED
 
-**Fix direction:** The optimization loop must iterate per-pool. For each pool, identify which OSDs have too many/too few primaries *for that specific pool*, then find swaps within that pool's PG set.
+`scorer.calculate_swap_delta()` computes score deltas from the 4-5 values that actually change. No state copies, no re-aggregation. `ScoreComponents` caches variance, mean, and sum-of-squares for O(1) delta computation. The old `simulate_swap_score()` remains only as a test oracle.
 
-### Critical: Swap evaluation is O(N) when it should be O(1)
+### ~~Major: Dimensional scores are not comparable~~ FIXED
 
-`simulate_swap_score` copies the entire cluster state (all OSDs, all hosts, all pools, recalculates all host aggregations) for every single candidate swap. For 100 OSDs with 10k PGs, this means thousands of full-state copies per iteration. A swap only changes 2 OSD counts, 2 host counts, and 1 pool's distribution — the score delta can be computed directly.
+Composite score now uses CV (coefficient of variation = std/mean) for each dimension instead of raw variance. CV is scale-invariant, so dimensions are comparable regardless of their absolute magnitude. Score = `w_osd * osd_cv + w_host * host_cv + w_pool * avg_pool_cv`.
 
-**Fix direction:** Compute score delta from the 4-5 values that actually change. No copies, no re-aggregation.
-
-### Major: Dimensional scores are not comparable
-
-The composite score adds `w_osd * Var(osd_counts) + w_host * Var(host_counts) + w_pool * Avg(Var(pool_counts))`. These variances have completely different scales (hosts have ~10 members with large counts; OSDs have ~100 members with small counts). The dimension with the largest absolute variance dominates regardless of weights.
-
-**Fix direction:** Score each dimension using coefficient of variation (CV = std/mean), which is scale-invariant. Then weight and combine.
+## Remaining Algorithmic Issues
 
 ### Minor: Termination only checks OSD dimension
 
 Even with host and pool optimization enabled, the optimizer terminates when OSD CV drops below target. Host and pool dimensions are ignored for termination.
 
+### Minor: No per-pool optimization loop
+
+The optimizer finds the single globally-best swap per iteration. A per-pool loop (for each pool, find best swap within that pool's PGs, then pick the globally best) would improve pool-level convergence, especially for clusters with many small pools.
+
 ## What NOT To Do
 
-- Don't add more optimizer algorithms until the one we have works correctly
-- Don't add dynamic weights until static weights produce correct results
-- Don't add features (offline mode, YAML config, batch execution modes) until the core algorithm is solid
 - Don't write documentation about features that don't work yet
 - Don't create planning docs — just do the work
 - Don't add abstractions "for future flexibility"
 - Don't preserve backward compatibility with code that was wrong
-- Don't optimize for performance before correctness (but do keep O(1) swap eval in mind from the start)
 
-## Simplification Roadmap
+## Progress
 
-### Phase 1: Clean Slate (delete cruft)
-Remove: `plans/`, deprecated `optimizer.py` wrapper, stale docs, release notes files, one-off scripts, example configs that duplicate each other, unused optimizer variants (tabu, SA, batch_greedy), dynamic_scorer.py, weight_strategies.py. Consolidate tests. Add `conftest.py`.
+### Phase 1: Clean Slate — DONE
+Removed `plans/`, deprecated `optimizer.py` wrapper, stale docs, release notes files, one-off scripts.
 
-### Phase 2: Fix the algorithm
-1. Make swap evaluation O(1) using delta scoring
-2. Implement per-pool donor/receiver identification
-3. Normalize dimensional scores using CV
+### Phase 2: Fix the algorithm — 3 of 5 DONE
+1. ~~Make swap evaluation O(1) using delta scoring~~ DONE
+2. ~~Implement per-pool donor/receiver identification~~ DONE
+3. ~~Normalize dimensional scores using CV~~ DONE
 4. Fix termination to check all enabled dimensions
 5. Design the multi-dimension loop: for each pool → find pool-level swaps → score globally → pick best
 
-### Phase 3: Validate with benchmarks
-Run before/after benchmarks. The algorithm should be:
-- **Faster** (O(1) swap eval instead of full-state copy)
-- **More effective** (pool-level balance actually improves)
-- **Equally good or better** on OSD/host dimensions
+### Phase 3: Validate with benchmarks — IN PROGRESS
+Benchmark results with CV-based scoring (greedy, target CV 0.05, max 2000 iterations):
+```
+Scenario                        Swaps   Time     OSD CV          Host CV         Pool CV
+Small 10 OSD / 2 pool              11   0.0s  0.238 → 0.071  0.085 → 0.000  0.283 → 0.135
+Medium 100 OSD / 5 pool           479   3.8s  0.266 → 0.050  0.092 → 0.001  0.372 → 0.168
+Large 500 OSD / 10 pool          1487  70.0s  0.299 → 0.114  0.093 → 0.000  0.523 → 0.382
+Sparse 840 OSD / 30 pool          191   4.8s  0.327 → 0.225  0.056 → 0.000  0.248 → 0.212
+Multi-pool 60 OSD / 20            390   3.4s  0.301 → 0.050  0.105 → 0.001  0.538 → 0.377
+```
+All three dimensions improve simultaneously. Host CV reaches near-zero. Pool CV improves meaningfully but plateaus — remaining items 4 and 5 above will address this.
 
 ## Code Style
 

@@ -181,13 +181,15 @@ class TestOptimizerRegistry(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        # Clear registry before each test
+        # Save and clear registry before each test
+        self._saved_algorithms = dict(OptimizerRegistry._algorithms)
         OptimizerRegistry._algorithms.clear()
-    
+
     def tearDown(self):
         """Clean up after tests."""
-        # Clear registry after each test
+        # Restore registry after each test
         OptimizerRegistry._algorithms.clear()
+        OptimizerRegistry._algorithms.update(self._saved_algorithms)
     
     def test_register_optimizer(self):
         """Test registering an optimizer."""

@@ -126,7 +126,6 @@ class TestTabuSearchInitialization:
         assert optimizer.aspiration_threshold == 0.1
         assert optimizer.diversification_enabled is True
         assert optimizer.diversification_threshold == 100
-        assert optimizer.max_candidates == 50
         assert optimizer.target_cv == 0.10
         assert optimizer.algorithm_name == "Tabu Search (tenure=50)"
         assert optimizer.is_deterministic is True
@@ -147,11 +146,6 @@ class TestTabuSearchInitialization:
         optimizer = TabuSearchOptimizer(diversification_enabled=False)
         assert optimizer.diversification_enabled is False
     
-    def test_custom_max_candidates(self):
-        """Test custom max_candidates."""
-        optimizer = TabuSearchOptimizer(max_candidates=100)
-        assert optimizer.max_candidates == 100
-    
     def test_invalid_tabu_tenure(self):
         """Test that invalid tabu tenure raises error."""
         with pytest.raises(ValueError, match="tabu_tenure must be >= 1"):
@@ -169,11 +163,6 @@ class TestTabuSearchInitialization:
         """Test that invalid diversification threshold raises error."""
         with pytest.raises(ValueError, match="diversification_threshold must be >= 1"):
             TabuSearchOptimizer(diversification_threshold=0)
-    
-    def test_invalid_max_candidates(self):
-        """Test that invalid max_candidates raises error."""
-        with pytest.raises(ValueError, match="max_candidates must be >= 1"):
-            TabuSearchOptimizer(max_candidates=0)
     
     def test_algorithm_specific_stats_initialized(self):
         """Test that algorithm-specific statistics are initialized."""
@@ -236,7 +225,6 @@ class TestOptimization:
         optimizer = TabuSearchOptimizer(
             target_cv=0.10,
             tabu_tenure=30,
-            max_candidates=30
         )
         swaps = optimizer.optimize(simple_state)
         
@@ -327,21 +315,19 @@ class TestTabuListManagement:
         assert optimizer._is_tabu("1.0", 10) is False
         assert optimizer._is_tabu("1.0", 15) is False
     
-    def test_clean_tabu_list_removes_expired(self, simple_state):
-        """Test that clean_tabu_list removes expired entries."""
+    def test_lazy_expiry_removes_expired(self, simple_state):
+        """Test that expired tabu entries are lazily removed on lookup."""
         optimizer = TabuSearchOptimizer(tabu_tenure=10)
-        
-        # Add entries at different iterations
+
         optimizer._add_to_tabu_list("1.0", 0)
         optimizer._add_to_tabu_list("1.1", 5)
         optimizer._add_to_tabu_list("1.2", 15)
-        
-        # Clean at iteration 20
-        optimizer._clean_tabu_list(20)
-        
-        # First two should be removed, third should remain
-        assert len(optimizer._tabu_list) == 1
-        assert optimizer._tabu_list[0][0] == "1.2"
+
+        # At iteration 20: 1.0 (added at 0) and 1.1 (added at 5) are expired
+        assert not optimizer._is_tabu("1.0", 20)
+        assert not optimizer._is_tabu("1.1", 20)
+        # 1.2 (added at 15) is still active
+        assert optimizer._is_tabu("1.2", 20)
     
     def test_tabu_list_max_size_tracked(self, simple_state):
         """Test that max tabu list size is tracked."""

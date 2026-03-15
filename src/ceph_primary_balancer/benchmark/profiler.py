@@ -13,6 +13,7 @@ from typing import List, Tuple, Optional, Dict
 import copy
 
 from ..models import ClusterState
+from ..optimizers import OptimizerRegistry
 from ..optimizers.greedy import GreedyOptimizer
 from ..scorer import Scorer
 from .generator import generate_synthetic_cluster
@@ -87,7 +88,8 @@ def profile_optimization(
     state: ClusterState,
     target_cv: float = 0.10,
     scorer: Optional[Scorer] = None,
-    max_iterations: int = 10000
+    max_iterations: int = 10000,
+    algorithm: str = 'greedy',
 ) -> Tuple[PerformanceMetrics, MemoryMetrics]:
     """
     Profile complete optimization run with detailed metrics.
@@ -122,11 +124,13 @@ def profile_optimization(
     
     # Run optimization
     optimize_start = time.time()
-    swaps = GreedyOptimizer(
+    optimizer = OptimizerRegistry.get_optimizer(
+        algorithm,
         target_cv=target_cv,
         max_iterations=max_iterations,
         scorer=scorer,
-    ).optimize(state_copy)
+    )
+    swaps = optimizer.optimize(state_copy)
     optimize_end = time.time()
     
     # End timing
@@ -363,18 +367,20 @@ def estimate_complexity(
 def quick_benchmark(
     num_osds: int = 10,
     num_pgs: int = 100,
-    imbalance_cv: float = 0.30
+    imbalance_cv: float = 0.30,
+    algorithm: str = 'greedy',
 ) -> Tuple[PerformanceMetrics, MemoryMetrics]:
     """
     Quick benchmark for smoke testing.
-    
+
     Defaults to small cluster (10 OSDs, 100 PGs) for fast execution.
-    
+
     Args:
         num_osds: Number of OSDs (default: 10 for quick test)
         num_pgs: Number of PGs (default: 100 for quick test)
         imbalance_cv: Initial imbalance
-        
+        algorithm: Optimizer algorithm name (default: greedy)
+
     Returns:
         Tuple of (PerformanceMetrics, MemoryMetrics)
     """
@@ -387,5 +393,5 @@ def quick_benchmark(
         imbalance_cv=imbalance_cv,
         seed=42
     )
-    
-    return profile_optimization(state)
+
+    return profile_optimization(state, algorithm=algorithm)
