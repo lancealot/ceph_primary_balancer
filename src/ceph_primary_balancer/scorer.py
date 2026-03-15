@@ -9,7 +9,6 @@ This module implements composite scoring across multiple dimensions:
 The scorer allows configurable weights to prioritize different optimization goals.
 """
 
-import statistics as stats_module
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from .models import ClusterState, Statistics
@@ -24,6 +23,10 @@ class ScoreComponents:
     pool_vars: Dict[int, float] = field(default_factory=dict)  # pool_id -> variance
     avg_pool_var: float = 0.0
     total: float = 0.0
+    # Per-pool cached values for O(1) pool variance delta
+    pool_sum_sq: Dict[int, int] = field(default_factory=dict)   # pool_id -> sum of squared counts
+    pool_total: Dict[int, int] = field(default_factory=dict)    # pool_id -> sum of counts
+    pool_n: Dict[int, int] = field(default_factory=dict)        # pool_id -> number of OSDs with primaries
 
 
 class Scorer:
@@ -212,14 +215,22 @@ class Scorer:
             components.host_var = self.calculate_host_variance(state)
 
         if 'pool' in self.enabled_levels and state.pools:
-            from .analyzer import calculate_pool_statistics
             for pool in state.pools.values():
-                if pool.primary_counts:
-                    try:
-                        ps = calculate_pool_statistics(pool, state.osds)
-                        components.pool_vars[pool.pool_id] = ps.std_dev ** 2
-                    except ValueError:
-                        continue
+                counts = [c for osd_id, c in pool.primary_counts.items() if osd_id in state.osds]
+                n = len(counts)
+                if n > 1:
+                    s = sum(counts)
+                    ss = sum(c * c for c in counts)
+                    var = (ss - s * s / n) / (n - 1)
+                    components.pool_vars[pool.pool_id] = var
+                    components.pool_sum_sq[pool.pool_id] = ss
+                    components.pool_total[pool.pool_id] = s
+                    components.pool_n[pool.pool_id] = n
+                elif n == 1:
+                    components.pool_vars[pool.pool_id] = 0.0
+                    components.pool_sum_sq[pool.pool_id] = counts[0] * counts[0]
+                    components.pool_total[pool.pool_id] = counts[0]
+                    components.pool_n[pool.pool_id] = 1
             if components.pool_vars:
                 components.avg_pool_var = sum(components.pool_vars.values()) / len(components.pool_vars)
 
@@ -266,33 +277,36 @@ class Scorer:
                     delta_host_var = 2.0 * (new_host_count - old_host_count + 1) / (n - 1)
                     delta += self.w_host * delta_host_var
 
-        # Pool dimension: recompute just the affected pool's variance
+        # Pool dimension: O(1) using cached sum-of-squares, total, and n
         if 'pool' in self.enabled_levels and state.pools and pool_id in state.pools:
             pool = state.pools[pool_id]
             old_pool_var = components.pool_vars.get(pool_id, 0.0)
 
-            # Build simulated counts for this pool only
-            sim_counts = dict(pool.primary_counts)
-            # Decrement old primary
-            if old_primary in sim_counts:
-                sim_counts[old_primary] -= 1
-                if sim_counts[old_primary] == 0:
-                    del sim_counts[old_primary]
-            # Increment new primary
-            sim_counts[new_primary] = sim_counts.get(new_primary, 0) + 1
+            a = pool.primary_counts.get(old_primary, 0)  # current count of old_primary in this pool
+            b = pool.primary_counts.get(new_primary, 0)  # current count of new_primary in this pool
 
-            # Compute new variance for this pool (sample variance to match stdev²)
-            counts_list = list(sim_counts.values())
-            if len(counts_list) > 1:
-                new_pool_var = stats_module.variance(counts_list)
+            ss = components.pool_sum_sq.get(pool_id, 0)
+            s = components.pool_total.get(pool_id, 0)
+            n = components.pool_n.get(pool_id, 0)
+
+            # After swap: old_primary goes a->a-1, new_primary goes b->b+1
+            # Sum of squares delta: (a-1)² - a² + (b+1)² - b² = -2a+1 + 2b+1 = 2(b-a+1)
+            new_ss = ss + 2 * (b - a + 1)
+            # Total is unchanged (one loses, one gains)
+            # n changes if OSD enters/leaves the pool's primary set
+            new_n = n
+            if a == 1:  # old_primary drops to 0, leaves the set
+                new_n -= 1
+            if b == 0:  # new_primary enters the set
+                new_n += 1
+
+            if new_n > 1:
+                new_pool_var = (new_ss - s * s / new_n) / (new_n - 1)
             else:
                 new_pool_var = 0.0
 
-            # Delta to avg pool var: replace this pool's contribution
             num_pools = len(components.pool_vars) if components.pool_vars else 1
-            # Handle case where pool wasn't in pool_vars before
-            if pool_id not in components.pool_vars and counts_list:
-                # Pool is being added
+            if pool_id not in components.pool_vars:
                 num_pools_new = num_pools + 1
                 delta_avg = (sum(components.pool_vars.values()) + new_pool_var) / num_pools_new - components.avg_pool_var
             elif num_pools > 0:
