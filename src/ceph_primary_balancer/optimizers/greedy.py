@@ -266,11 +266,14 @@ def find_best_swap(
             )
             improvement = current_score - new_score
 
-            # Small bonus for cross-host swaps (helps break ties)
+            # Small relative bonus for cross-host swaps (tie-breaker only).
+            # Only applied when improvement is positive — never select a
+            # score-worsening swap just because it's cross-host.
             host_bonus = 0.0
-            if state.hosts and state.osds[pg.primary].host and state.osds[candidate_osd].host:
-                if state.osds[pg.primary].host != state.osds[candidate_osd].host:
-                    host_bonus = 0.01
+            if improvement > 0 and state.hosts:
+                if state.osds[pg.primary].host and state.osds[candidate_osd].host:
+                    if state.osds[pg.primary].host != state.osds[candidate_osd].host:
+                        host_bonus = improvement * 0.01
 
             effective_improvement = improvement + host_bonus
 

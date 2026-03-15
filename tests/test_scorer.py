@@ -198,24 +198,28 @@ class TestCompositeScore(unittest.TestCase):
     """Test composite score calculation."""
     
     def test_composite_score_osd_only(self):
-        """Test composite score with only OSD dimension."""
+        """Test composite score with only OSD dimension uses CV."""
+        import math
         scorer = Scorer(w_osd=1.0, w_host=0.0, w_pool=0.0)
         osds = {
             0: OSDInfo(osd_id=0, primary_count=5),
             1: OSDInfo(osd_id=1, primary_count=15)
         }
         state = ClusterState(pgs={}, osds=osds)
-        
+
         score = scorer.calculate_score(state)
-        
-        # Score should equal OSD variance
+
+        # Score should equal OSD CV (std/mean), not raw variance
         osd_variance = scorer.calculate_osd_variance(state)
-        self.assertAlmostEqual(score, osd_variance)
+        mean = (5 + 15) / 2
+        expected_cv = math.sqrt(osd_variance) / mean
+        self.assertAlmostEqual(score, expected_cv)
     
     def test_composite_score_multi_dimensional(self):
-        """Test composite score with all dimensions."""
+        """Test composite score uses weighted CV across all dimensions."""
+        import math
         scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
-        
+
         hosts = {
             "host1": HostInfo(hostname="host1", osd_ids=[0], primary_count=10, total_pg_count=20),
             "host2": HostInfo(hostname="host2", osd_ids=[1], primary_count=20, total_pg_count=30)
@@ -229,15 +233,19 @@ class TestCompositeScore(unittest.TestCase):
                        primary_counts={0: 10, 1: 20})
         }
         state = ClusterState(pgs={}, osds=osds, hosts=hosts, pools=pools)
-        
+
         score = scorer.calculate_score(state)
-        
-        # Score should be weighted sum
+
+        # Score should be weighted sum of CVs, not raw variances
         osd_var = scorer.calculate_osd_variance(state)
         host_var = scorer.calculate_host_variance(state)
         pool_var = scorer.calculate_pool_variance(state)
-        
-        expected = 0.5 * osd_var + 0.3 * host_var + 0.2 * pool_var
+
+        osd_cv = math.sqrt(osd_var) / 15.0    # mean = (10+20)/2 = 15
+        host_cv = math.sqrt(host_var) / 15.0   # mean = (10+20)/2 = 15
+        pool_cv = math.sqrt(pool_var) / 15.0    # mean = (10+20)/2 = 15
+
+        expected = 0.5 * osd_cv + 0.3 * host_cv + 0.2 * pool_cv
         self.assertAlmostEqual(score, expected)
     
     def test_composite_score_perfect_balance(self):

@@ -17,11 +17,23 @@ from .analyzer import calculate_statistics, calculate_average_pool_variance
 
 @dataclass
 class ScoreComponents:
-    """Cached score components for O(1) delta scoring."""
+    """Cached score components for O(1) delta scoring.
+
+    Stores both variance and CV for each dimension. The score uses CV
+    (coefficient of variation = std/mean) which is scale-invariant, making
+    dimensions comparable regardless of their absolute magnitude. Variance
+    and mean are cached so delta scoring can compute new CV in O(1).
+    """
     osd_var: float = 0.0
+    osd_mean: float = 0.0
+    osd_cv: float = 0.0
     host_var: float = 0.0
+    host_mean: float = 0.0
+    host_cv: float = 0.0
     pool_vars: Dict[int, float] = field(default_factory=dict)  # pool_id -> variance
-    avg_pool_var: float = 0.0
+    pool_means: Dict[int, float] = field(default_factory=dict)  # pool_id -> mean
+    pool_cvs: Dict[int, float] = field(default_factory=dict)    # pool_id -> CV
+    avg_pool_cv: float = 0.0
     total: float = 0.0
     # Per-pool cached values for O(1) pool variance delta
     pool_sum_sq: Dict[int, int] = field(default_factory=dict)   # pool_id -> sum of squared counts
@@ -170,49 +182,73 @@ class Scorer:
     
     def calculate_score(self, state: ClusterState) -> float:
         """
-        Calculate composite balance score for the cluster state.
-        
-        The score is a weighted sum of variances across enabled dimensions only.
-        Disabled dimensions are completely skipped (not just weighted to 0).
+        Calculate composite balance score using CV (coefficient of variation).
+
+        Uses CV = std_dev / mean for each dimension, which is scale-invariant.
+        This makes dimensions comparable regardless of their absolute magnitude
+        (e.g., 100 OSDs with small counts vs 10 hosts with large counts).
+
+        Score = Σ(weight × CV) for enabled dimensions only.
         Lower scores indicate better overall balance.
-        
-        Phase 6.5: Only calculates variance for enabled dimensions, providing
-        performance optimization by skipping unnecessary computations.
-        
-        Score = Σ(weight × variance) for enabled dimensions only
-        
+
         Args:
             state: Current cluster state
-        
+
         Returns:
             float: Composite score (lower is better)
         """
+        import math
         score = 0.0
-        
-        # Only calculate if enabled (skip computation for disabled dimensions)
+
         if 'osd' in self.enabled_levels:
             osd_var = self.calculate_osd_variance(state)
-            score += self.w_osd * osd_var
-        
+            primary_counts = [osd.primary_count for osd in state.osds.values()]
+            mean = sum(primary_counts) / len(primary_counts) if primary_counts else 0.0
+            osd_cv = math.sqrt(osd_var) / mean if mean > 0 else 0.0
+            score += self.w_osd * osd_cv
+
         if 'host' in self.enabled_levels:
             host_var = self.calculate_host_variance(state)
-            score += self.w_host * host_var
-        
+            if state.hosts:
+                host_counts = [h.primary_count for h in state.hosts.values()]
+                mean = sum(host_counts) / len(host_counts) if host_counts else 0.0
+                host_cv = math.sqrt(host_var) / mean if mean > 0 else 0.0
+            else:
+                host_cv = 0.0
+            score += self.w_host * host_cv
+
         if 'pool' in self.enabled_levels:
-            pool_var = self.calculate_pool_variance(state)
-            score += self.w_pool * pool_var
-        
+            pool_cvs = []
+            if state.pools:
+                for pool in state.pools.values():
+                    counts = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
+                    if len(counts) > 1:
+                        stats = calculate_statistics(counts)
+                        pool_cvs.append(stats.cv)
+                    elif len(counts) == 1:
+                        pool_cvs.append(0.0)
+            avg_pool_cv = sum(pool_cvs) / len(pool_cvs) if pool_cvs else 0.0
+            score += self.w_pool * avg_pool_cv
+
         return score
     
     def calculate_score_with_components(self, state: ClusterState) -> ScoreComponents:
-        """Calculate score and cache individual variance components for delta scoring."""
+        """Calculate CV-based score and cache variance/mean for O(1) delta scoring."""
+        import math
         components = ScoreComponents()
 
         if 'osd' in self.enabled_levels:
             components.osd_var = self.calculate_osd_variance(state)
+            primary_counts = [osd.primary_count for osd in state.osds.values()]
+            components.osd_mean = sum(primary_counts) / len(primary_counts) if primary_counts else 0.0
+            components.osd_cv = math.sqrt(components.osd_var) / components.osd_mean if components.osd_mean > 0 else 0.0
 
         if 'host' in self.enabled_levels:
             components.host_var = self.calculate_host_variance(state)
+            if state.hosts:
+                host_counts = [h.primary_count for h in state.hosts.values()]
+                components.host_mean = sum(host_counts) / len(host_counts) if host_counts else 0.0
+                components.host_cv = math.sqrt(components.host_var) / components.host_mean if components.host_mean > 0 else 0.0
 
         if 'pool' in self.enabled_levels and state.pools:
             for pool in state.pools.values():
@@ -222,22 +258,27 @@ class Scorer:
                     s = sum(counts)
                     ss = sum(c * c for c in counts)
                     var = (ss - s * s / n) / (n - 1)
+                    mean = s / n
                     components.pool_vars[pool.pool_id] = var
+                    components.pool_means[pool.pool_id] = mean
+                    components.pool_cvs[pool.pool_id] = math.sqrt(var) / mean if mean > 0 else 0.0
                     components.pool_sum_sq[pool.pool_id] = ss
                     components.pool_total[pool.pool_id] = s
                     components.pool_n[pool.pool_id] = n
                 elif n == 1:
                     components.pool_vars[pool.pool_id] = 0.0
+                    components.pool_means[pool.pool_id] = float(counts[0])
+                    components.pool_cvs[pool.pool_id] = 0.0
                     components.pool_sum_sq[pool.pool_id] = counts[0] * counts[0]
                     components.pool_total[pool.pool_id] = counts[0]
                     components.pool_n[pool.pool_id] = 1
-            if components.pool_vars:
-                components.avg_pool_var = sum(components.pool_vars.values()) / len(components.pool_vars)
+            if components.pool_cvs:
+                components.avg_pool_cv = sum(components.pool_cvs.values()) / len(components.pool_cvs)
 
         components.total = (
-            self.w_osd * components.osd_var
-            + self.w_host * components.host_var
-            + self.w_pool * components.avg_pool_var
+            self.w_osd * components.osd_cv
+            + self.w_host * components.host_cv
+            + self.w_pool * components.avg_pool_cv
         )
         return components
 
@@ -250,67 +291,76 @@ class Scorer:
         pool_id: int,
     ) -> float:
         """
-        Compute score delta for a proposed swap in O(1) for OSD/host, O(p) for pool.
+        Compute CV-based score delta for a proposed swap in O(1).
 
-        Returns the NEW score (components.total + delta). Lower is better.
+        Mean doesn't change during a swap (total count unchanged per dimension),
+        so new_cv = sqrt(max(0, old_var + delta_var)) / mean.
+
+        Returns the NEW score. Lower is better.
         """
+        import math
         delta = 0.0
 
-        # OSD dimension: delta_var = 2*(new_count - old_count + 1) / (n-1)
+        # OSD dimension: compute new CV from variance delta
         if 'osd' in self.enabled_levels:
             n = len(state.osds)
-            if n > 1:
+            if n > 1 and components.osd_mean > 0:
                 old_count = state.osds[old_primary].primary_count
                 new_count = state.osds[new_primary].primary_count
                 delta_osd_var = 2.0 * (new_count - old_count + 1) / (n - 1)
-                delta += self.w_osd * delta_osd_var
+                new_osd_var = max(0.0, components.osd_var + delta_osd_var)
+                new_osd_cv = math.sqrt(new_osd_var) / components.osd_mean
+                delta += self.w_osd * (new_osd_cv - components.osd_cv)
 
-        # Host dimension: same formula, but only if different hosts
+        # Host dimension: same approach, but only if different hosts
         if 'host' in self.enabled_levels and state.hosts:
             old_host = state.osds[old_primary].host
             new_host = state.osds[new_primary].host
             if old_host and new_host and old_host != new_host:
                 n = len(state.hosts)
-                if n > 1:
+                if n > 1 and components.host_mean > 0:
                     old_host_count = state.hosts[old_host].primary_count
                     new_host_count = state.hosts[new_host].primary_count
                     delta_host_var = 2.0 * (new_host_count - old_host_count + 1) / (n - 1)
-                    delta += self.w_host * delta_host_var
+                    new_host_var = max(0.0, components.host_var + delta_host_var)
+                    new_host_cv = math.sqrt(new_host_var) / components.host_mean
+                    delta += self.w_host * (new_host_cv - components.host_cv)
 
-        # Pool dimension: O(1) using cached sum-of-squares, total, and n
+        # Pool dimension: compute new per-pool CV from variance delta
         if 'pool' in self.enabled_levels and state.pools and pool_id in state.pools:
             pool = state.pools[pool_id]
-            old_pool_var = components.pool_vars.get(pool_id, 0.0)
+            old_pool_cv = components.pool_cvs.get(pool_id, 0.0)
 
-            a = pool.primary_counts.get(old_primary, 0)  # current count of old_primary in this pool
-            b = pool.primary_counts.get(new_primary, 0)  # current count of new_primary in this pool
+            a = pool.primary_counts.get(old_primary, 0)
+            b = pool.primary_counts.get(new_primary, 0)
 
             ss = components.pool_sum_sq.get(pool_id, 0)
             s = components.pool_total.get(pool_id, 0)
             n = components.pool_n.get(pool_id, 0)
+            pool_mean = components.pool_means.get(pool_id, 0.0)
 
             # After swap: old_primary goes a->a-1, new_primary goes b->b+1
-            # Sum of squares delta: (a-1)² - a² + (b+1)² - b² = -2a+1 + 2b+1 = 2(b-a+1)
             new_ss = ss + 2 * (b - a + 1)
-            # Total is unchanged (one loses, one gains)
-            # n changes if OSD enters/leaves the pool's primary set
             new_n = n
-            if a == 1:  # old_primary drops to 0, leaves the set
+            if a == 1:
                 new_n -= 1
-            if b == 0:  # new_primary enters the set
+            if b == 0:
                 new_n += 1
 
             if new_n > 1:
                 new_pool_var = (new_ss - s * s / new_n) / (new_n - 1)
+                # Mean changes if n changes (same total, different count)
+                new_pool_mean = s / new_n if new_n > 0 else 0.0
+                new_pool_cv = math.sqrt(max(0.0, new_pool_var)) / new_pool_mean if new_pool_mean > 0 else 0.0
             else:
-                new_pool_var = 0.0
+                new_pool_cv = 0.0
 
-            num_pools = len(components.pool_vars) if components.pool_vars else 1
-            if pool_id not in components.pool_vars:
+            num_pools = len(components.pool_cvs) if components.pool_cvs else 1
+            if pool_id not in components.pool_cvs:
                 num_pools_new = num_pools + 1
-                delta_avg = (sum(components.pool_vars.values()) + new_pool_var) / num_pools_new - components.avg_pool_var
+                delta_avg = (sum(components.pool_cvs.values()) + new_pool_cv) / num_pools_new - components.avg_pool_cv
             elif num_pools > 0:
-                delta_avg = (new_pool_var - old_pool_var) / num_pools
+                delta_avg = (new_pool_cv - old_pool_cv) / num_pools
             else:
                 delta_avg = 0.0
             delta += self.w_pool * delta_avg

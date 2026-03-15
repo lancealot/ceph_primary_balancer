@@ -119,9 +119,12 @@ def test_scorer_variance_calculation():
     assert osd_var > 0, "OSD variance should be positive"
     assert host_var > 0, "Host variance should be positive"
     
-    # Calculate composite score
+    # Calculate composite score (now CV-based)
+    import math
     score = scorer.calculate_score(state)
-    expected_score = (0.7 * osd_var) + (0.3 * host_var)
+    osd_mean = sum(osd.primary_count for osd in state.osds.values()) / len(state.osds)
+    host_mean = sum(h.primary_count for h in state.hosts.values()) / len(state.hosts)
+    expected_score = 0.7 * (math.sqrt(osd_var) / osd_mean) + 0.3 * (math.sqrt(host_var) / host_mean)
     assert abs(score - expected_score) < 0.01, f"Score {score} != expected {expected_score}"
     
     print("✓ Scorer variance calculation test passed")
@@ -202,9 +205,10 @@ def test_multi_dimensional_scoring():
     scorer = Scorer(w_osd=0.5, w_host=0.5, w_pool=0.0)
     score = scorer.calculate_score(state)
     
-    # Score should be dominated by host variance
-    host_var = scorer.calculate_host_variance(state)
-    assert score > (0.4 * host_var), "Score should reflect host imbalance"
+    # Score should reflect host imbalance (host CV > 0 while OSD CV = 0)
+    assert score > 0, "Score should reflect host imbalance"
+    # With OSDs perfectly balanced, score should come entirely from host CV
+    assert score > 0.1, "Score should be significant due to host imbalance"
     
     print("✓ Multi-dimensional scoring test passed")
 
