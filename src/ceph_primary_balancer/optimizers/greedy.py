@@ -289,6 +289,63 @@ def find_best_swap(
     return best_swap
 
 
+def find_best_pool_swap(
+    state: ClusterState,
+    scorer: Scorer,
+    target_cv: float,
+) -> Optional[SwapProposal]:
+    """Find the best swap targeting pools with CV above target.
+
+    Unlike find_best_swap, this does NOT require the primary to be an
+    OSD-level or pool-level donor. It considers ALL PGs in high-CV pools,
+    catching swaps that donor/receiver filtering would miss — especially
+    for small pools where no single OSD crosses the donor threshold.
+
+    Args:
+        state: Current ClusterState
+        scorer: Scorer instance for composite scoring
+        target_cv: Target CV — only pools above this are searched
+
+    Returns:
+        SwapProposal with best improvement, or None if no beneficial swaps found
+    """
+    if 'pool' not in scorer.enabled_levels or not state.pools:
+        return None
+
+    components = scorer.calculate_score_with_components(state)
+    current_score = components.total
+
+    # Index PGs by pool
+    pool_pgs: Dict[int, list] = {}
+    for pg in state.pgs.values():
+        pool_pgs.setdefault(pg.pool_id, []).append(pg)
+
+    best_swap = None
+    best_improvement = 0.0
+
+    for pool_id, pool_cv in components.pool_cvs.items():
+        if pool_cv <= target_cv:
+            continue
+
+        for pg in pool_pgs.get(pool_id, []):
+            for candidate_osd in pg.acting[1:]:
+                new_score = scorer.calculate_swap_delta(
+                    state, components, pg.primary, candidate_osd, pool_id
+                )
+                improvement = current_score - new_score
+
+                if improvement > best_improvement:
+                    best_improvement = improvement
+                    best_swap = SwapProposal(
+                        pgid=pg.pgid,
+                        old_primary=pg.primary,
+                        new_primary=candidate_osd,
+                        score_improvement=improvement,
+                    )
+
+    return best_swap
+
+
 class GreedyOptimizer(OptimizerBase):
     """
     Greedy optimization algorithm for primary PG balancing.
@@ -323,16 +380,17 @@ class GreedyOptimizer(OptimizerBase):
     def optimize(self, state: ClusterState) -> List[SwapProposal]:
         """
         Run greedy optimization algorithm.
-        
-        Iteratively finds and applies the best swap until:
-        - Target CV is achieved at OSD level, OR
-        - No more donors/receivers exist, OR
-        - No beneficial swaps are found, OR
-        - Maximum iterations are reached
-        
+
+        Each iteration runs two candidate searches:
+        1. Global search using OSD-level and pool-level donors/receivers
+        2. Per-pool search targeting pools with CV above target
+
+        The better swap wins. Continues until all enabled dimensions
+        reach target CV, no beneficial swaps remain, or max iterations.
+
         Args:
             state: ClusterState to optimize (modified in place)
-            
+
         Returns:
             List of all SwapProposal objects applied
         """
@@ -412,6 +470,13 @@ class GreedyOptimizer(OptimizerBase):
                 swap = find_best_swap(state, donors, receivers, self.scorer,
                                       pool_donors, pool_receivers)
             
+            # Also search for pool-targeted swaps (catches candidates that
+            # donor/receiver filtering misses for small/imbalanced pools)
+            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
+            if pool_swap is not None:
+                if swap is None or pool_swap.score_improvement > swap.score_improvement:
+                    swap = pool_swap
+
             if swap is None:
                 if self.verbose:
                     print("No beneficial swaps found")

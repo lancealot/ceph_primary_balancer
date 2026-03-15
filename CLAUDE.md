@@ -104,15 +104,13 @@ Per-pool donor/receiver identification implemented in `analyzer.identify_pool_do
 
 Composite score now uses CV (coefficient of variation = std/mean) for each dimension instead of raw variance. CV is scale-invariant, so dimensions are comparable regardless of their absolute magnitude. Score = `w_osd * osd_cv + w_host * host_cv + w_pool * avg_pool_cv`.
 
-## Remaining Algorithmic Issues
+### ~~Minor: Termination only checks OSD dimension~~ FIXED
 
-### Minor: Termination only checks OSD dimension
+Termination now checks ALL enabled dimensions (OSD, host, pool). The optimizer continues until every enabled dimension has CV at or below target_cv. The CLI pre-optimization check also considers all enabled dimensions before skipping optimization.
 
-Even with host and pool optimization enabled, the optimizer terminates when OSD CV drops below target. Host and pool dimensions are ignored for termination.
+### ~~Minor: No per-pool optimization loop~~ FIXED
 
-### Minor: No per-pool optimization loop
-
-The optimizer finds the single globally-best swap per iteration. A per-pool loop (for each pool, find best swap within that pool's PGs, then pick the globally best) would improve pool-level convergence, especially for clusters with many small pools.
+Each iteration now runs two candidate searches: the existing global search (OSD-level + pool-level donors/receivers) and a per-pool search that targets pools with CV above target. The per-pool search iterates all PGs in high-CV pools without donor/receiver filtering, catching swaps that threshold-based filtering misses. The better swap wins.
 
 ## What NOT To Do
 
@@ -126,24 +124,24 @@ The optimizer finds the single globally-best swap per iteration. A per-pool loop
 ### Phase 1: Clean Slate — DONE
 Removed `plans/`, deprecated `optimizer.py` wrapper, stale docs, release notes files, one-off scripts.
 
-### Phase 2: Fix the algorithm — 3 of 5 DONE
+### Phase 2: Fix the algorithm — DONE
 1. ~~Make swap evaluation O(1) using delta scoring~~ DONE
 2. ~~Implement per-pool donor/receiver identification~~ DONE
 3. ~~Normalize dimensional scores using CV~~ DONE
-4. Fix termination to check all enabled dimensions
-5. Design the multi-dimension loop: for each pool → find pool-level swaps → score globally → pick best
+4. ~~Fix termination to check all enabled dimensions~~ DONE
+5. ~~Per-pool optimization loop for pool-level convergence~~ DONE
 
-### Phase 3: Validate with benchmarks — IN PROGRESS
-Benchmark results with CV-based scoring (greedy, target CV 0.05, max 2000 iterations):
+### Phase 3: Validate with benchmarks — DONE
+Benchmark results with all Phase 2 fixes (greedy, target CV 0.05, max 2000 iterations):
 ```
 Scenario                        Swaps   Time     OSD CV          Host CV         Pool CV
-Small 10 OSD / 2 pool              11   0.0s  0.238 → 0.071  0.085 → 0.000  0.283 → 0.135
-Medium 100 OSD / 5 pool           479   3.8s  0.266 → 0.050  0.092 → 0.001  0.372 → 0.168
-Large 500 OSD / 10 pool          1487  70.0s  0.299 → 0.114  0.093 → 0.000  0.523 → 0.382
-Sparse 840 OSD / 30 pool          191   4.8s  0.327 → 0.225  0.056 → 0.000  0.248 → 0.212
-Multi-pool 60 OSD / 20            390   3.4s  0.301 → 0.050  0.105 → 0.001  0.538 → 0.377
+Small 10 OSD / 2 pool              21   0.0s  0.200 → 0.020  0.066 → 0.000  0.264 → 0.081
+Medium 100 OSD / 5 pool           302   5.5s  0.264 → 0.022  0.091 → 0.000  0.441 → 0.287
+Large 500 OSD / 10 pool          1973 144.2s  0.300 → 0.024  0.095 → 0.002  0.563 → 0.264
+Sparse 840 OSD / 30 pool          196   9.5s  0.327 → 0.221  0.056 → 0.000  0.248 → 0.208
+Multi-pool 60 OSD / 20            782  19.8s  0.301 → 0.007  0.105 → 0.001  0.538 → 0.190
 ```
-All three dimensions improve simultaneously. Host CV reaches near-zero. Pool CV improves meaningfully but plateaus — remaining items 4 and 5 above will address this.
+All three dimensions improve simultaneously. Multi-dimension termination + per-pool search dramatically improved pool convergence (e.g., Multi-pool Pool CV: 0.377 → 0.190). Runtime increased for Large scenario due to more iterations; `max_iterations` caps this in production.
 
 ## Code Style
 

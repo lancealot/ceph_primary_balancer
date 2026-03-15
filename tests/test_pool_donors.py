@@ -11,7 +11,7 @@ from ceph_primary_balancer.analyzer import (
     identify_pool_donors_receivers, calculate_pool_statistics,
 )
 from ceph_primary_balancer.benchmark.generator import generate_synthetic_cluster
-from ceph_primary_balancer.optimizers.greedy import find_best_swap, apply_swap
+from ceph_primary_balancer.optimizers.greedy import find_best_swap, find_best_pool_swap, apply_swap
 from ceph_primary_balancer.optimizers import GreedyOptimizer
 from ceph_primary_balancer.scorer import Scorer
 
@@ -291,6 +291,62 @@ def test_pool_cv_decreases_with_many_pools():
         f"Average pool CV should improve: "
         f"{initial_avg_cv:.4f} -> {final_avg_cv:.4f}"
     )
+
+
+def test_find_best_pool_swap_finds_swaps_without_donors():
+    """
+    find_best_pool_swap should find improving swaps for high-CV pools
+    even when no OSD crosses the donor/receiver threshold.
+    """
+    state = _make_pool_imbalanced_cluster()
+    scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+
+    # OSD-level: no donors/receivers (perfectly balanced at OSD level)
+    donors = identify_donors(state.osds)
+    receivers = identify_receivers(state.osds)
+    assert donors == []
+    assert receivers == []
+
+    # find_best_swap without pool donors finds nothing
+    swap_global = find_best_swap(state, donors, receivers, scorer)
+    assert swap_global is None
+
+    # find_best_pool_swap should still find a swap because pool 1 has CV >> 0.10
+    swap_pool = find_best_pool_swap(state, scorer, target_cv=0.10)
+    assert swap_pool is not None
+    assert swap_pool.score_improvement > 0
+    assert state.pgs[swap_pool.pgid].pool_id == 1
+
+
+def test_find_best_pool_swap_skips_balanced_pools():
+    """find_best_pool_swap returns None when all pools are below target CV."""
+    osds = {i: OSDInfo(osd_id=i, primary_count=10, total_pg_count=20)
+            for i in range(4)}
+    pools = {
+        1: PoolInfo(pool_id=1, pool_name='p1', pg_count=40,
+                    primary_counts={0: 10, 1: 10, 2: 10, 3: 10}),
+    }
+    pgs = {}
+    for i in range(40):
+        primary = i % 4
+        others = [o for o in range(4) if o != primary]
+        pgs[f'1.{i}'] = PGInfo(pgid=f'1.{i}', pool_id=1,
+                                acting=[primary, others[0], others[1]])
+
+    state = ClusterState(pgs=pgs, osds=osds, pools=pools, hosts={})
+    scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+
+    swap = find_best_pool_swap(state, scorer, target_cv=0.10)
+    assert swap is None
+
+
+def test_find_best_pool_swap_returns_none_when_pool_disabled():
+    """find_best_pool_swap returns None when pool dimension is disabled."""
+    state = _make_pool_imbalanced_cluster()
+    scorer = Scorer(w_osd=1.0, w_host=0.0, w_pool=0.0, enabled_levels=['osd'])
+
+    swap = find_best_pool_swap(state, scorer, target_cv=0.10)
+    assert swap is None
 
 
 def test_production_scale_840_osds_30_pools_4096_pgs():

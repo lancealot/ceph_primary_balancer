@@ -562,17 +562,30 @@ def main():
                 print(f"    PGs: {pool.pg_count}, CV: {pool_stat.cv:.2%}, "
                       f"Range: [{pool_stat.min_val}-{pool_stat.max_val}]")
     
-    # Step 3: Check if already balanced at OSD level
+    # Step 3: Check if already balanced across all enabled dimensions
     print("\n" + "="*60)
-    if current_stats_osd.cv <= args.target_cv:
-        print(f"Cluster already balanced at OSD level (CV = {current_stats_osd.cv:.2%})")
-        print(f"Target CV of {args.target_cv:.2%} already achieved - no optimization needed")
+    all_below_target = True
+    if 'osd' in enabled_levels and current_stats_osd.cv > args.target_cv:
+        all_below_target = False
+    if 'host' in enabled_levels and state.hosts:
+        host_counts = [host.primary_count for host in state.hosts.values()]
+        if host_counts and analyzer.calculate_statistics(host_counts).cv > args.target_cv:
+            all_below_target = False
+    if 'pool' in enabled_levels and state.pools:
+        from .analyzer import get_pool_statistics_summary
+        pool_stats_check = get_pool_statistics_summary(state)
+        if pool_stats_check:
+            avg_cv = sum(ps.cv for ps in pool_stats_check.values()) / len(pool_stats_check)
+            if avg_cv > args.target_cv:
+                all_below_target = False
+    if all_below_target:
+        print(f"Cluster already balanced across all enabled dimensions (target CV = {args.target_cv:.2%})")
         return
     
     # Step 4: Optimize primary distribution with multi-dimensional scoring
     print(f"OPTIMIZATION")
     print("="*60)
-    print(f"Target OSD CV: {args.target_cv:.2%}")
+    print(f"Target CV: {args.target_cv:.2%} (checked across: {', '.join(enabled_levels)})")
     print(f"Scoring weights: OSD={args.weight_osd:.1f}, Host={args.weight_host:.1f}, Pool={args.weight_pool:.1f}")
     if args.pool is not None:
         if args.pool in state.pools:
