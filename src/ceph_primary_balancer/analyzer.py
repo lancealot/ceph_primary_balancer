@@ -167,8 +167,9 @@ def identify_pool_donors_receivers(
             elif count < lo:
                 receivers.add(osd_id)
 
-        if donors and receivers:
+        if donors:
             pool_donors[pool_id] = donors
+        if receivers:
             pool_receivers[pool_id] = receivers
 
     return pool_donors, pool_receivers
