@@ -742,3 +742,27 @@ def test_optimizer_uses_focused_fallback_to_escape_plateau():
 
     assert len(swaps) > 0
     assert final_osd_cv < initial_osd_cv
+
+
+def test_stall_detection_stops_focused_fallback_churn():
+    """Optimizer should stop early when focused fallback churns without progress.
+
+    Without stall detection, the optimizer burns through remaining iterations
+    applying swaps that worsen composite score without improving any dimension.
+    """
+    # Use a cluster shape where the optimizer will converge most dimensions
+    # but hit a wall on pool CV, triggering repeated focused fallback
+    state = generate_synthetic_cluster(
+        num_osds=60, num_hosts=6, num_pools=15, pgs_per_pool=100,
+        replication_factor=3, imbalance_cv=0.35, seed=77,
+    )
+
+    # Set an unreachably low target to force the optimizer into focused fallback
+    optimizer = GreedyOptimizer(target_cv=0.001, max_iterations=2000)
+    swaps = optimizer.optimize(state)
+
+    # Should terminate well before max_iterations due to stall detection
+    assert optimizer.stats.iterations < 2000, (
+        f"Expected early termination via stall detection, "
+        f"but ran {optimizer.stats.iterations} iterations"
+    )
