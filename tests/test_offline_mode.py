@@ -332,9 +332,40 @@ class TestOfflineDataLoading(unittest.TestCase):
     def test_load_from_export_invalid_files(self):
         """Test error when loading invalid export."""
         (self.export_dir / "osd_tree.json").unlink()
-        
+
         with self.assertRaises(OfflineExportError):
             offline.load_from_export_files(str(self.export_dir))
+
+    def test_load_excludes_down_osds_from_counts(self):
+        """Test that down OSDs are excluded from ClusterState entirely."""
+        osd_data = {
+            "nodes": [
+                {"id": -1, "name": "default", "type": "root"},
+                {"id": -2, "name": "host-00", "type": "host", "children": [0, 1]},
+                {"id": -3, "name": "host-01", "type": "host", "children": [2, 3, 4]},
+                {"id": 0, "name": "osd.0", "type": "osd", "status": "up"},
+                {"id": 1, "name": "osd.1", "type": "osd", "status": "up"},
+                {"id": 2, "name": "osd.2", "type": "osd", "status": "up"},
+                {"id": 3, "name": "osd.3", "type": "osd", "status": "down"},
+                {"id": 4, "name": "osd.4", "type": "osd", "status": "up"},
+            ]
+        }
+        with open(self.export_dir / "osd_tree.json", 'w') as f:
+            json.dump(osd_data, f)
+
+        state = offline.load_from_export_files(str(self.export_dir))
+
+        # OSD 3 is down — should not be in state.osds
+        self.assertEqual(len(state.osds), 4)
+        self.assertNotIn(3, state.osds)
+
+        # Host-01 should only have OSDs 2 and 4
+        self.assertEqual(len(state.hosts["host-01"].osd_ids), 2)
+        self.assertNotIn(3, state.hosts["host-01"].osd_ids)
+
+        # PG 1.1 has acting [1, 2, 3] — OSD 3 is down so its PG
+        # participation shouldn't count, but the PG still exists
+        self.assertIn("1.1", state.pgs)
 
 
 class TestOfflineDataParsing(unittest.TestCase):
@@ -388,6 +419,42 @@ class TestOfflineDataParsing(unittest.TestCase):
         self.assertIn(2, hosts["host-02"].osd_ids)
         self.assertIn(3, hosts["host-02"].osd_ids)
     
+    def test_parse_osd_tree_excludes_down_osds(self):
+        """Test that down OSDs are excluded from parsing."""
+        data = {
+            "nodes": [
+                {"id": -1, "name": "root", "type": "root"},
+                {"id": -2, "name": "host-01", "type": "host", "children": [0, 1, 2]},
+                {"id": 0, "name": "osd.0", "type": "osd", "status": "up"},
+                {"id": 1, "name": "osd.1", "type": "osd", "status": "down"},
+                {"id": 2, "name": "osd.2", "type": "osd", "status": "up"},
+            ]
+        }
+
+        osds, hosts = offline._parse_osd_tree(data)
+
+        self.assertEqual(len(osds), 2)
+        self.assertIn(0, osds)
+        self.assertNotIn(1, osds)
+        self.assertIn(2, osds)
+        # Down OSD should not appear in host's osd_ids
+        self.assertNotIn(1, hosts["host-01"].osd_ids)
+        self.assertEqual(len(hosts["host-01"].osd_ids), 2)
+
+    def test_parse_osd_tree_missing_status_treated_as_up(self):
+        """Test that OSDs without status field are treated as up."""
+        data = {
+            "nodes": [
+                {"id": -1, "name": "root", "type": "root"},
+                {"id": -2, "name": "host-01", "type": "host", "children": [0, 1]},
+                {"id": 0, "name": "osd.0", "type": "osd"},
+                {"id": 1, "name": "osd.1", "type": "osd"},
+            ]
+        }
+
+        osds, hosts = offline._parse_osd_tree(data)
+        self.assertEqual(len(osds), 2)
+
     def test_parse_pool_data(self):
         """Test pool data parsing."""
         data = [

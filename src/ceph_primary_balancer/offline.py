@@ -276,10 +276,13 @@ def _parse_osd_tree(data: Dict) -> Tuple[Dict[int, OSDInfo], Dict[str, HostInfo]
                 total_pg_count=0
             )
     
-    # Build OSDs
+    # Build OSDs (skip down OSDs)
     osds = {}
     for node in nodes:
         if node.get('type') == 'osd':
+            if node.get('status', 'up') != 'up':
+                continue
+
             osd_id = node['id']
             host_name = osd_to_host.get(osd_id)
             
