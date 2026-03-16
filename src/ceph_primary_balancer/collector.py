@@ -155,12 +155,17 @@ def collect_osd_data() -> Tuple[Dict[int, OSDInfo], Dict[str, HostInfo]]:
                 total_pg_count=0
             )
     
-    # Second pass: collect OSDs and link to hosts
+    # Second pass: collect OSDs and link to hosts (skip down OSDs)
     osds = {}
     for node in nodes:
         if node.get('type') == 'osd':
+            # Skip down OSDs — they can't serve primaries and would skew
+            # statistics with phantom 0-primary entries
+            if node.get('status', 'up') != 'up':
+                continue
+
             osd_id = node['id']
-            
+
             # Get host from our mapping (built from children arrays)
             # Fall back to parent field traversal if available
             host_name = osd_to_host.get(osd_id)
