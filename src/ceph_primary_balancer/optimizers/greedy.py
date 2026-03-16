@@ -278,7 +278,7 @@ def find_best_swap(
             effective_improvement = improvement + host_bonus
 
             if effective_improvement > best_improvement:
-                best_improvement = improvement
+                best_improvement = effective_improvement
                 best_swap = SwapProposal(
                     pgid=pg.pgid,
                     old_primary=pg.primary,
@@ -342,6 +342,103 @@ def find_best_pool_swap(
                         new_primary=candidate_osd,
                         score_improvement=improvement,
                     )
+
+    return best_swap
+
+
+def find_best_focused_swap(
+    state: ClusterState,
+    scorer: Scorer,
+    target_cv: float,
+    max_regression: float = 0.001,
+) -> Optional[SwapProposal]:
+    """Find the best swap targeting the dimension furthest from target.
+
+    When composite scoring hits a local minimum, this function breaks the
+    deadlock by searching for swaps that improve the worst dimension while
+    accepting bounded regression in the composite score. It creates a
+    temporary single-dimension scorer for candidate evaluation, then filters
+    results by the composite regression limit.
+
+    Args:
+        state: Current ClusterState
+        scorer: Main scorer (for composite score and enabled_levels)
+        target_cv: Target CV threshold
+        max_regression: Maximum allowed composite score worsening (absolute)
+
+    Returns:
+        SwapProposal or None if no acceptable swap found
+    """
+    import math
+
+    components = scorer.calculate_score_with_components(state)
+    current_score = components.total
+
+    # Determine which dimension is furthest from target
+    dim_gaps = []
+    if 'osd' in scorer.enabled_levels and components.osd_cv > target_cv:
+        dim_gaps.append(('osd', components.osd_cv - target_cv))
+    if 'host' in scorer.enabled_levels and components.host_cv > target_cv:
+        dim_gaps.append(('host', components.host_cv - target_cv))
+    if 'pool' in scorer.enabled_levels:
+        for pool_id, pool_cv in components.pool_cvs.items():
+            if pool_cv > target_cv:
+                dim_gaps.append(('pool', pool_cv - target_cv))
+                break  # Just need to know pool dimension is above target
+
+    if not dim_gaps:
+        return None
+
+    # Sort by gap descending, focus on the worst dimension
+    dim_gaps.sort(key=lambda x: x[1], reverse=True)
+    focus_dim = dim_gaps[0][0]
+
+    # Create a single-dimension scorer to find dimension-improving swaps
+    focused_scorer = Scorer(
+        w_osd=1.0 if focus_dim == 'osd' else 0.0,
+        w_host=1.0 if focus_dim == 'host' else 0.0,
+        w_pool=1.0 if focus_dim == 'pool' else 0.0,
+        enabled_levels=[focus_dim],
+    )
+
+    focused_components = focused_scorer.calculate_score_with_components(state)
+    focused_score = focused_components.total
+
+    best_swap = None
+    best_composite_delta = max_regression  # worst allowed regression
+    best_focused_improvement = 0.0
+
+    for pg in state.pgs.values():
+        for candidate_osd in pg.acting[1:]:
+            # Check focused dimension improvement
+            new_focused = focused_scorer.calculate_swap_delta(
+                state, focused_components, pg.primary, candidate_osd, pg.pool_id
+            )
+            focused_improvement = focused_score - new_focused
+            if focused_improvement <= 0:
+                continue
+
+            # Check composite regression is bounded
+            new_composite = scorer.calculate_swap_delta(
+                state, components, pg.primary, candidate_osd, pg.pool_id
+            )
+            composite_delta = new_composite - current_score  # positive = regression
+
+            if composite_delta > max_regression:
+                continue
+
+            # Pick the swap with best focused improvement among acceptable ones
+            if (focused_improvement > best_focused_improvement or
+                    (focused_improvement == best_focused_improvement and
+                     composite_delta < best_composite_delta)):
+                best_focused_improvement = focused_improvement
+                best_composite_delta = composite_delta
+                best_swap = SwapProposal(
+                    pgid=pg.pgid,
+                    old_primary=pg.primary,
+                    new_primary=candidate_osd,
+                    score_improvement=-composite_delta,
+                )
 
     return best_swap
 
@@ -485,6 +582,16 @@ class GreedyOptimizer(OptimizerBase):
             if pool_swap is not None:
                 if swap is None or pool_swap.score_improvement > swap.score_improvement:
                     swap = pool_swap
+
+            # Last resort: dimension-focused search to escape local minimum.
+            # Accepts bounded composite regression to improve the worst dimension.
+            if swap is None:
+                swap = find_best_focused_swap(
+                    state, self.scorer, self.target_cv,
+                    max_regression=0.001,
+                )
+                if swap is not None and self.verbose:
+                    print(f"  [focused fallback] found swap with improvement={swap.score_improvement:.6f}")
 
             if swap is None:
                 if self.verbose:
