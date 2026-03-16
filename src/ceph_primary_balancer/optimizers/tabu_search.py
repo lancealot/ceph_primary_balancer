@@ -271,7 +271,12 @@ class TabuSearchOptimizer(OptimizerBase):
         pool_donors, pool_receivers = identify_pool_donors_receivers(state)
 
         if not donors and not pool_donors:
-            return None
+            # Retry with relaxed threshold before giving up
+            donors = identify_donors(state.osds, threshold_pct=0.0)
+            receivers = identify_receivers(state.osds, threshold_pct=0.0)
+            pool_donors, pool_receivers = identify_pool_donors_receivers(state, threshold_pct=0.0)
+            if not donors and not pool_donors:
+                return None
 
         components = self.scorer.calculate_score_with_components(state)
         current_score = components.total

@@ -190,7 +190,12 @@ class BatchGreedyOptimizer(OptimizerBase):
         pool_donors, pool_receivers = identify_pool_donors_receivers(state)
 
         if not donors and not pool_donors:
-            return []
+            # Retry with relaxed threshold before giving up
+            donors = identify_donors(state.osds, threshold_pct=0.0)
+            receivers = identify_receivers(state.osds, threshold_pct=0.0)
+            pool_donors, pool_receivers = identify_pool_donors_receivers(state, threshold_pct=0.0)
+            if not donors and not pool_donors:
+                return []
 
         components = self.scorer.calculate_score_with_components(state)
         current_score = components.total
