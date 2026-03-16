@@ -464,17 +464,11 @@ class GreedyOptimizer(OptimizerBase):
             swap = find_best_swap(search_state, donors, receivers, self.scorer,
                                   pool_donors, pool_receivers)
 
-            # Also search for pool-targeted swaps (catches candidates that
-            # donor/receiver filtering misses for small/imbalanced pools)
-            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
-            if pool_swap is not None:
-                if swap is None or pool_swap.score_improvement > swap.score_improvement:
-                    swap = pool_swap
-
-            # If no swap found, retry with relaxed threshold (0%) so any OSD
-            # above mean is a donor and any below mean is a receiver. This
-            # prevents stalling on sparse clusters where the 10% threshold
-            # creates a dead zone (e.g., mean=6.2, all OSDs at 5-8).
+            # If normal threshold found nothing, retry with relaxed threshold
+            # (0%) so any OSD above mean is a donor and any below mean is a
+            # receiver. This prevents stalling on sparse clusters where the
+            # 10% threshold creates a dead zone (e.g., mean=6.2, all OSDs
+            # at 5-8).
             if swap is None:
                 relaxed_donors = analyzer.identify_donors(state.osds, threshold_pct=0.0)
                 relaxed_receivers = analyzer.identify_receivers(state.osds, threshold_pct=0.0)
@@ -483,6 +477,14 @@ class GreedyOptimizer(OptimizerBase):
                 )
                 swap = find_best_swap(search_state, relaxed_donors, relaxed_receivers,
                                       self.scorer, relaxed_pool_d, relaxed_pool_r)
+
+            # Also search for pool-targeted swaps (catches candidates that
+            # donor/receiver filtering misses for small/imbalanced pools).
+            # Compare with whatever the global search found and pick the best.
+            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
+            if pool_swap is not None:
+                if swap is None or pool_swap.score_improvement > swap.score_improvement:
+                    swap = pool_swap
 
             if swap is None:
                 if self.verbose:
