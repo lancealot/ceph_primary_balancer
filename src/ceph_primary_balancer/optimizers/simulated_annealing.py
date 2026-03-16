@@ -167,6 +167,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         
         # Temperature tracking
         self._current_temperature = initial_temperature
+        self._effective_cooling_rate = cooling_rate
         
         # Best solution tracking
         self._best_score: Optional[float] = None
@@ -190,8 +191,8 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
     def algorithm_name(self) -> str:
         """Return human-readable algorithm name."""
         return (f"Simulated Annealing "
-                f"(T={self.initial_temperature:.1f}→{self.final_temperature:.2f}, "
-                f"cooling={self.cooling_rate})")
+                f"(T={self._current_temperature:.4f}, "
+                f"cooling={self._effective_cooling_rate:.6f})")
     
     @property
     def is_deterministic(self) -> bool:
@@ -211,19 +212,29 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         swaps_applied = []
         self._start_timer()
         
-        # Initialize temperature
-        self._current_temperature = self.initial_temperature
-        
+        # Auto-calibrate temperature from actual score deltas
+        calibrated_temp = self._calibrate_temperature(state)
+        self._current_temperature = calibrated_temp
+
+        # Compute cooling_rate so temperature reaches final_temperature
+        # by max_iterations: T_final = T_init * rate^N
+        if self.cooling_schedule == 'geometric' and self.max_iterations > 0:
+            # Scale final_temperature relative to calibrated start
+            scaled_final = calibrated_temp * (self.final_temperature / self.initial_temperature)
+            scaled_final = max(scaled_final, 1e-12)
+            self._effective_cooling_rate = (scaled_final / calibrated_temp) ** (1.0 / self.max_iterations)
+        else:
+            self._effective_cooling_rate = self.cooling_rate
+
         # Initialize best solution tracking
         self._best_score = self.scorer.calculate_score(state)
         self._best_state = self._copy_state(state)
         self._best_swaps = []
-        
+
         if self.verbose:
             print(f"\nStarting Simulated Annealing Optimization")
-            print(f"Initial temperature: {self.initial_temperature}")
-            print(f"Final temperature: {self.final_temperature}")
-            print(f"Cooling: {self.cooling_schedule} (rate={self.cooling_rate})")
+            print(f"Initial temperature: {calibrated_temp:.6f} (auto-calibrated)")
+            print(f"Cooling: {self.cooling_schedule} (effective rate={self._effective_cooling_rate:.6f})")
             print(f"Reheating: {'enabled' if self.reheating_enabled else 'disabled'}")
             print(f"Random seed: {self.random_seed if self.random_seed is not None else 'None (non-deterministic)'}")
             print(f"Neighbor selection: random\n")
@@ -291,10 +302,10 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
                           f"{self._current_temperature * self.reheating_factor:.4f}")
                 
                 self._current_temperature *= self.reheating_factor
-                # Cap at initial temperature
+                # Cap at calibrated initial temperature
                 self._current_temperature = min(
                     self._current_temperature,
-                    self.initial_temperature
+                    calibrated_temp
                 )
                 self._iterations_without_improvement = 0
                 self.stats.algorithm_specific['reheats'] += 1
@@ -335,6 +346,67 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         
         return swaps_applied
     
+    def _calibrate_temperature(self, state: ClusterState, num_samples: int = 50) -> float:
+        """Set initial temperature from actual score deltas.
+
+        Samples random swaps, collects the absolute deltas for worsening
+        moves, and returns a temperature that gives ~80% acceptance
+        probability for the median worsening delta.  Falls back to the
+        user-supplied initial_temperature if sampling fails.
+        """
+        from ..analyzer import (
+            identify_donors, identify_receivers,
+            identify_pool_donors_receivers,
+        )
+
+        donors = identify_donors(state.osds, threshold_pct=0.0)
+        receivers = identify_receivers(state.osds, threshold_pct=0.0)
+        pool_donors, pool_receivers = identify_pool_donors_receivers(
+            state, threshold_pct=0.0
+        )
+        if not donors and not pool_donors:
+            return self.initial_temperature
+
+        donor_set = set(donors) if donors else set()
+        receiver_set = set(receivers) if receivers else set()
+
+        candidates = []
+        for pg in state.pgs.values():
+            pool_id = pg.pool_id
+            if (pg.primary in donor_set or
+                    pg.primary in pool_donors.get(pool_id, set())):
+                for c in pg.acting[1:]:
+                    if (c in receiver_set or
+                            c in pool_receivers.get(pool_id, set())):
+                        candidates.append((pg, c))
+
+        if not candidates:
+            return self.initial_temperature
+
+        components = self.scorer.calculate_score_with_components(state)
+        worsening_deltas = []
+        sample_size = min(num_samples, len(candidates))
+        sampled = self._rng.sample(candidates, sample_size)
+
+        for pg, candidate_osd in sampled:
+            new_score = self.scorer.calculate_swap_delta(
+                state, components, pg.primary, candidate_osd, pg.pool_id
+            )
+            delta = new_score - components.total  # positive = worsening
+            if delta > 0:
+                worsening_deltas.append(delta)
+
+        if not worsening_deltas:
+            return self.initial_temperature
+
+        worsening_deltas.sort()
+        median_delta = worsening_deltas[len(worsening_deltas) // 2]
+
+        # Solve exp(-median_delta / T) = 0.8  →  T = -median_delta / ln(0.8)
+        target_accept = 0.80
+        calibrated = -median_delta / math.log(target_accept)
+        return calibrated
+
     def _find_random_swap(self, state: ClusterState) -> Optional[SwapProposal]:
         """
         Pick a random neighbor by selecting a random donor PG and random
@@ -431,18 +503,11 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
                 return False
     
     def _cool_temperature(self):
-        """
-        Reduce temperature according to cooling schedule.
-        
-        Updates self._current_temperature based on cooling_schedule:
-        - geometric: T *= cooling_rate
-        - linear: T -= cooling_rate
-        """
+        """Reduce temperature according to cooling schedule."""
         if self.cooling_schedule == 'geometric':
-            self._current_temperature *= self.cooling_rate
+            self._current_temperature *= self._effective_cooling_rate
         elif self.cooling_schedule == 'linear':
             self._current_temperature -= self.cooling_rate
-            # Ensure temperature doesn't go negative
             self._current_temperature = max(self._current_temperature, 0.0)
     
     def _copy_state(self, state: ClusterState) -> ClusterState:
@@ -597,7 +662,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         
         if self.verbose:
             print("\n=== Simulated Annealing Statistics ===")
-            print(f"Initial temperature: {self.initial_temperature}")
+            print(f"Initial temperature: {calibrated_temp:.6f} (auto-calibrated)")
             print(f"Final temperature: {self._current_temperature:.6f}")
             print(f"Accepted better moves: {self.stats.algorithm_specific['accepted_better_moves']}")
             print(f"Accepted worse moves: {self.stats.algorithm_specific['accepted_worse_moves']}")
