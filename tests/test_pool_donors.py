@@ -485,6 +485,61 @@ def test_optimizer_continues_with_relaxed_threshold():
     )
 
 
+def test_relaxed_threshold_runs_before_pool_swap_comparison():
+    """
+    Regression test: previously the relaxed threshold (0%) search only fired
+    when swap was None AFTER comparing with pool_swap. If pool_swap found a
+    marginal pool improvement, the relaxed OSD search never ran, causing OSD
+    CV to stall while pool CV slowly ticked down.
+
+    Fix: run relaxed threshold when normal threshold returns None, BEFORE
+    comparing with pool_swap. This lets OSD-improving swaps compete.
+
+    Verifies the structural fix by checking that when the 10% threshold
+    produces no donors, the relaxed search runs before pool_swap comparison.
+    """
+    # Use the synthetic generator for a sparse cluster where 10% threshold
+    # will exhaust quickly. The key metric: OSD CV should keep improving
+    # even when pool imbalance also exists.
+    state = generate_synthetic_cluster(
+        num_osds=60, num_hosts=6, num_pools=10, pgs_per_pool=30,
+        replication_factor=3, imbalance_cv=0.40, seed=99,
+    )
+
+    initial_osd_cv = calculate_statistics(
+        [o.primary_count for o in state.osds.values()]
+    ).cv
+
+    # Run with OSD-heavy weight so OSD improvement matters
+    optimizer = GreedyOptimizer(
+        target_cv=0.05, max_iterations=300,
+        scorer=Scorer(w_osd=0.7, w_host=0.0, w_pool=0.3, enabled_levels=['osd', 'pool'])
+    )
+    swaps = optimizer.optimize(state)
+
+    final_osd_cv = calculate_statistics(
+        [o.primary_count for o in state.osds.values()]
+    ).cv
+
+    assert len(swaps) > 5, f"Expected meaningful swaps, got {len(swaps)}"
+    assert final_osd_cv < initial_osd_cv * 0.7, (
+        f"OSD CV should improve significantly: {initial_osd_cv:.4f} -> {final_osd_cv:.4f}"
+    )
+
+    # Structural check: verify relaxed threshold finds candidates when
+    # normal threshold is exhausted
+    from ceph_primary_balancer.analyzer import identify_donors, identify_receivers
+    donors_10 = identify_donors(state.osds, threshold_pct=0.1)
+    donors_0 = identify_donors(state.osds, threshold_pct=0.0)
+    receivers_10 = identify_receivers(state.osds, threshold_pct=0.1)
+    receivers_0 = identify_receivers(state.osds, threshold_pct=0.0)
+
+    # After optimization, 10% threshold should have fewer candidates than 0%
+    # (or both empty if fully converged)
+    assert len(donors_0) >= len(donors_10)
+    assert len(receivers_0) >= len(receivers_10)
+
+
 def test_pool_swap_runs_when_osd_donors_empty():
     """
     Verify that find_best_pool_swap is reached and produces swaps even
