@@ -444,38 +444,45 @@ class GreedyOptimizer(OptimizerBase):
             # Identify per-pool donors and receivers
             pool_donors, pool_receivers = analyzer.identify_pool_donors_receivers(state)
 
-            if not donors and not pool_donors:
-                if self.verbose:
-                    print("No more donors or receivers")
-                break
-
-            # Find best swap
-            # If pool filtering is enabled, create filtered state
+            # Compute search state once (handles pool_filter)
             if self.pool_filter is not None:
                 filtered_pgs = {pgid: pg for pgid, pg in state.pgs.items() if pg.pool_id == self.pool_filter}
                 if not filtered_pgs:
                     if self.verbose:
                         print(f"No PGs found in pool {self.pool_filter}")
                     break
-
-                filtered_state = ClusterState(
+                search_state = ClusterState(
                     pgs=filtered_pgs,
                     osds=state.osds,
                     hosts=state.hosts,
                     pools=state.pools
                 )
-                swap = find_best_swap(filtered_state, donors, receivers, self.scorer,
-                                      pool_donors, pool_receivers)
             else:
-                swap = find_best_swap(state, donors, receivers, self.scorer,
-                                      pool_donors, pool_receivers)
-            
+                search_state = state
+
+            # Find best swap using donor/receiver filtering
+            swap = find_best_swap(search_state, donors, receivers, self.scorer,
+                                  pool_donors, pool_receivers)
+
             # Also search for pool-targeted swaps (catches candidates that
             # donor/receiver filtering misses for small/imbalanced pools)
             pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
             if pool_swap is not None:
                 if swap is None or pool_swap.score_improvement > swap.score_improvement:
                     swap = pool_swap
+
+            # If no swap found, retry with relaxed threshold (0%) so any OSD
+            # above mean is a donor and any below mean is a receiver. This
+            # prevents stalling on sparse clusters where the 10% threshold
+            # creates a dead zone (e.g., mean=6.2, all OSDs at 5-8).
+            if swap is None:
+                relaxed_donors = analyzer.identify_donors(state.osds, threshold_pct=0.0)
+                relaxed_receivers = analyzer.identify_receivers(state.osds, threshold_pct=0.0)
+                relaxed_pool_d, relaxed_pool_r = analyzer.identify_pool_donors_receivers(
+                    state, threshold_pct=0.0
+                )
+                swap = find_best_swap(search_state, relaxed_donors, relaxed_receivers,
+                                      self.scorer, relaxed_pool_d, relaxed_pool_r)
 
             if swap is None:
                 if self.verbose:

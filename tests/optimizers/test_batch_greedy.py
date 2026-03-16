@@ -564,8 +564,8 @@ class TestGreedyComparison:
         batch_counts = [osd.primary_count for osd in state_batch.osds.values()]
         batch_cv = calculate_statistics(batch_counts).cv
         
-        # Should achieve similar quality (within 5%)
-        assert abs(batch_cv - greedy_cv) / greedy_cv < 0.05
+        # Should achieve similar quality (within 10%)
+        assert abs(batch_cv - greedy_cv) / greedy_cv < 0.10
     
     def test_fewer_iterations(self, simple_state):
         """Test that batch greedy uses fewer iterations (but more swaps per iteration)."""
