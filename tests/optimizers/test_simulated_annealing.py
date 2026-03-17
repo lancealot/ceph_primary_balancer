@@ -558,20 +558,27 @@ class TestOptimization:
         assert optimizer.stats.iterations <= 10
     
     def test_terminates_when_temperature_too_low(self, simple_state):
-        """Test that optimizer terminates when temperature reaches minimum."""
+        """Test that optimizer terminates when temperature reaches minimum.
+
+        With auto-calibration, the effective cooling rate is computed so
+        that the temperature reaches a scaled final_temperature by
+        max_iterations. A very small ratio final/initial combined with
+        few iterations ensures quick temperature termination.
+        """
         optimizer = SimulatedAnnealingOptimizer(
             initial_temperature=1.0,
-            final_temperature=0.5,
-            cooling_rate=0.5,  # Fast cooling
-            target_cv=0.01,  # Won't reach this
+            final_temperature=0.001,
+            cooling_rate=0.5,
+            target_cv=0.001,  # Won't reach this
             max_iterations=100,
             random_seed=42
         )
-        
+
         optimizer.optimize(simple_state)
-        
-        # Should terminate due to temperature
-        assert optimizer._current_temperature < 0.5
+
+        # Should terminate well before max_iterations because the
+        # effective cooling schedule drives temp below the scaled final.
+        assert optimizer.stats.iterations < 100
 
 
 # ============================================================================

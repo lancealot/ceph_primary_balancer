@@ -524,6 +524,11 @@ class GreedyOptimizer(OptimizerBase):
                 print(f"Warning: Pool filter {self.pool_filter} not found in cluster, ignoring filter")
                 self.pool_filter = None
         
+        # Stall detection: stop when focused fallback churns without progress
+        stall_limit = 20
+        consecutive_fallback = 0
+        best_score_at_fallback_start = float('inf')
+
         # Main optimization loop
         for iteration in range(self.max_iterations):
             # Check termination conditions
@@ -533,7 +538,7 @@ class GreedyOptimizer(OptimizerBase):
                     stats = analyzer.calculate_statistics(primary_counts)
                     print(f"Target OSD-level CV {self.target_cv:.2%} achieved!")
                 break
-            
+
             # Identify donors and receivers at OSD level
             donors = analyzer.identify_donors(state.osds)
             receivers = analyzer.identify_receivers(state.osds)
@@ -585,18 +590,39 @@ class GreedyOptimizer(OptimizerBase):
 
             # Last resort: dimension-focused search to escape local minimum.
             # Accepts bounded composite regression to improve the worst dimension.
+            used_focused_fallback = False
             if swap is None:
                 swap = find_best_focused_swap(
                     state, self.scorer, self.target_cv,
                     max_regression=0.001,
                 )
-                if swap is not None and self.verbose:
-                    print(f"  [focused fallback] found swap with improvement={swap.score_improvement:.6f}")
+                if swap is not None:
+                    used_focused_fallback = True
+                    if self.verbose:
+                        print(f"  [focused fallback] found swap with improvement={swap.score_improvement:.6f}")
 
             if swap is None:
                 if self.verbose:
                     print("No beneficial swaps found")
                 break
+
+            # Stall detection: if focused fallback fires repeatedly without
+            # the composite score actually improving, we're stuck.
+            if used_focused_fallback:
+                if consecutive_fallback == 0:
+                    best_score_at_fallback_start = self.scorer.calculate_score(state)
+                consecutive_fallback += 1
+                if consecutive_fallback >= stall_limit:
+                    current_score = self.scorer.calculate_score(state)
+                    if current_score >= best_score_at_fallback_start - 1e-9:
+                        if self.verbose:
+                            print(f"Stalled: {stall_limit} consecutive focused-fallback iterations with no composite improvement")
+                        break
+                    # Score did improve — reset and keep going
+                    consecutive_fallback = 0
+                    best_score_at_fallback_start = current_score
+            else:
+                consecutive_fallback = 0
             
             # Apply swap to state
             apply_swap(state, swap)
