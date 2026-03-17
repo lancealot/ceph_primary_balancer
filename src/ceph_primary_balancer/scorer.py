@@ -9,10 +9,37 @@ This module implements composite scoring across multiple dimensions:
 The scorer allows configurable weights to prioritize different optimization goals.
 """
 
+import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from .models import ClusterState, Statistics
 from .analyzer import calculate_statistics, calculate_average_pool_variance
+
+
+def _pool_cv_floor(num_pgs: int, num_participating: int) -> float:
+    """Theoretical minimum pool CV given integer primary constraints.
+
+    With k PGs and n participating OSDs:
+    - If k < n: best case is k OSDs with 1 primary, (n-k) with 0.
+      CV = sqrt((n-k)/k).
+    - If k >= n: frac*(1-frac)/mean where frac = mean - floor(mean).
+    """
+    if num_participating <= 1 or num_pgs <= 0:
+        return 0.0
+    k = num_pgs
+    n = num_participating
+    if k < n:
+        return math.sqrt((n - k) / k)
+    mean = k / n
+    frac = mean - math.floor(mean)
+    min_var = frac * (1.0 - frac)
+    return math.sqrt(min_var) / mean if mean > 0 else 0.0
+
+
+# Pools with theoretical CV floor above this are excluded from the
+# weighted pool CV average.  These pools are too sparse to balance
+# (e.g. 32 PGs across 800 OSDs) and would skew the aggregate.
+UNBALANCEABLE_CV_FLOOR = 0.50
 
 
 @dataclass
@@ -42,6 +69,8 @@ class ScoreComponents:
     # PG-count weights for weighted average pool CV
     pool_pg_weight: Dict[int, int] = field(default_factory=dict)  # pool_id -> pg_count
     total_pool_pg_weight: int = 0                                  # sum of all pool pg_counts
+    # Pools excluded from the pool CV average (too sparse to balance)
+    pool_excluded: Set[int] = field(default_factory=set)
 
 
 class Scorer:
@@ -194,13 +223,16 @@ class Scorer:
         Score = Σ(weight × CV) for enabled dimensions only.
         Lower scores indicate better overall balance.
 
+        Pools whose theoretical CV floor exceeds UNBALANCEABLE_CV_FLOOR are
+        excluded from the pool CV average — they are too sparse to balance
+        and would dominate the aggregate.
+
         Args:
             state: Current cluster state
 
         Returns:
             float: Composite score (lower is better)
         """
-        import math
         score = 0.0
 
         if 'osd' in self.enabled_levels:
@@ -228,8 +260,13 @@ class Scorer:
                     # Include zeros for participating OSDs without primaries
                     if pool.participating_osds:
                         counts = [pool.primary_counts.get(oid, 0) for oid in pool.participating_osds if oid in state.osds]
+                        n_part = len([oid for oid in pool.participating_osds if oid in state.osds])
                     else:
                         counts = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
+                        n_part = len(counts)
+                    # Skip unbalanceable pools from the aggregate
+                    if _pool_cv_floor(pool.pg_count, n_part) > UNBALANCEABLE_CV_FLOOR:
+                        continue
                     w = max(pool.pg_count, 1)
                     if len(counts) > 1:
                         stats = calculate_statistics(counts)
@@ -242,8 +279,11 @@ class Scorer:
         return score
     
     def calculate_score_with_components(self, state: ClusterState) -> ScoreComponents:
-        """Calculate CV-based score and cache variance/mean for O(1) delta scoring."""
-        import math
+        """Calculate CV-based score and cache variance/mean for O(1) delta scoring.
+
+        Pools whose theoretical CV floor exceeds UNBALANCEABLE_CV_FLOOR are
+        recorded in ``pool_excluded`` and omitted from the weighted average.
+        """
         components = ScoreComponents()
 
         if 'osd' in self.enabled_levels:
@@ -270,6 +310,12 @@ class Scorer:
                 else:
                     # Fallback for data without participating_osds populated
                     n = len([1 for oid in pool.primary_counts if oid in state.osds])
+
+                # Skip unbalanceable pools — too sparse to optimise
+                if _pool_cv_floor(pool.pg_count, n) > UNBALANCEABLE_CV_FLOOR:
+                    components.pool_excluded.add(pool.pool_id)
+                    continue
+
                 # s and ss: zeros contribute nothing, so primary_counts alone
                 # gives the correct sums regardless of how many zeros there are
                 counts_vals = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
@@ -323,7 +369,6 @@ class Scorer:
 
         Returns the NEW score. Lower is better.
         """
-        import math
         delta = 0.0
 
         # OSD dimension: compute new CV from variance delta
@@ -352,7 +397,10 @@ class Scorer:
                     delta += self.w_host * (new_host_cv - components.host_cv)
 
         # Pool dimension: compute new per-pool CV from variance delta
-        if 'pool' in self.enabled_levels and state.pools and pool_id in state.pools:
+        # Skip pools that were excluded as unbalanceable
+        if ('pool' in self.enabled_levels and state.pools
+                and pool_id in state.pools
+                and pool_id not in components.pool_excluded):
             pool = state.pools[pool_id]
             old_pool_cv = components.pool_cvs.get(pool_id, 0.0)
 

@@ -278,30 +278,46 @@ class Reporter:
         proposed_pool_stats = get_pool_statistics_summary(proposed)
         
         if current_pool_stats:
-            # PG-weighted average CVs
-            def _weighted_avg(stats_dict, pools):
+            from .scorer import _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
+
+            # Classify pools as balanceable or not
+            excluded_pids = set()
+            for pid in current_pool_stats:
+                pool = current.pools.get(pid)
+                if pool is not None:
+                    n_part = len(pool.participating_osds) if pool.participating_osds else len(pool.primary_counts)
+                    if _pool_cv_floor(pool.pg_count, n_part) > UNBALANCEABLE_CV_FLOOR:
+                        excluded_pids.add(pid)
+
+            # PG-weighted average CVs (balanceable pools only)
+            def _weighted_avg(stats_dict, pools, exclude=None):
                 ws, tw = 0.0, 0
                 for pid, ps in stats_dict.items():
+                    if exclude and pid in exclude:
+                        continue
                     w = max(pools[pid].pg_count, 1) if pid in pools else 1
                     ws += ps.cv * w
                     tw += w
                 return ws / tw if tw > 0 else 0.0
-            current_avg_cv = _weighted_avg(current_pool_stats, current.pools)
-            proposed_avg_cv = _weighted_avg(proposed_pool_stats, proposed.pools)
-            
-            lines.append(f"Average Pool CV: {current_avg_cv:.2%} -> {proposed_avg_cv:.2%}")
+            current_avg_cv = _weighted_avg(current_pool_stats, current.pools, excluded_pids)
+            proposed_avg_cv = _weighted_avg(proposed_pool_stats, proposed.pools, excluded_pids)
+
+            lines.append(f"Average Pool CV (balanceable): {current_avg_cv:.2%} -> {proposed_avg_cv:.2%}")
+            if excluded_pids:
+                lines.append(f"  ({len(excluded_pids)} sparse pools excluded — too few PGs to balance)")
             lines.append("")
             lines.append(f"{'Pool':<20} {'Before CV':>12} {'After CV':>12} {'Improvement':>12}")
             lines.append("-" * 80)
-            
+
             for pool_id in sorted(current_pool_stats.keys()):
                 pool = current.pools[pool_id]
                 curr_cv = current_pool_stats[pool_id].cv
                 prop_cv = proposed_pool_stats.get(pool_id, current_pool_stats[pool_id]).cv
                 improvement = self._calculate_percentage_change(curr_cv, prop_cv)
-                
+
                 pool_display = f"{pool_id}:{pool.pool_name}"[:20]
-                lines.append(f"{pool_display:<20} {curr_cv:>12.2%} {prop_cv:>12.2%} {improvement:>12}")
+                sparse_tag = " [sparse]" if pool_id in excluded_pids else ""
+                lines.append(f"{pool_display:<20} {curr_cv:>12.2%} {prop_cv:>12.2%} {improvement:>12}{sparse_tag}")
         
         lines.append("-" * 80)
         return "\n".join(lines)

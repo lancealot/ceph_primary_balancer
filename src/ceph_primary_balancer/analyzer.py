@@ -229,18 +229,25 @@ def get_pool_statistics_summary(state: ClusterState) -> Dict[int, Statistics]:
 
 
 def calculate_weighted_avg_pool_cv(state: ClusterState) -> float:
-    """PG-weighted average pool CV.
+    """PG-weighted average pool CV, excluding unbalanceable pools.
 
-    Weights each pool's CV by its PG count so that small pools
-    (which have inherently high CV due to sparse distributions)
-    don't dominate the average.
+    Weights each pool's CV by its PG count.  Pools whose theoretical
+    CV floor exceeds the threshold (too sparse to balance) are excluded
+    so they don't dominate the aggregate and stall optimisation.
     """
+    from .scorer import _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
+
     pool_stats = get_pool_statistics_summary(state)
     if not pool_stats:
         return 0.0
     weighted_sum = 0.0
     total_w = 0
     for pid, ps in pool_stats.items():
+        pool = state.pools.get(pid)
+        if pool is not None:
+            n_part = len(pool.participating_osds) if pool.participating_osds else len(pool.primary_counts)
+            if _pool_cv_floor(pool.pg_count, n_part) > UNBALANCEABLE_CV_FLOOR:
+                continue
         w = max(state.pools[pid].pg_count, 1) if pid in state.pools else 1
         weighted_sum += ps.cv * w
         total_w += w
