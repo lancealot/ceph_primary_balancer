@@ -278,9 +278,16 @@ class Reporter:
         proposed_pool_stats = get_pool_statistics_summary(proposed)
         
         if current_pool_stats:
-            # Calculate average CVs
-            current_avg_cv = sum(s.cv for s in current_pool_stats.values()) / len(current_pool_stats)
-            proposed_avg_cv = sum(s.cv for s in proposed_pool_stats.values()) / len(proposed_pool_stats)
+            # PG-weighted average CVs
+            def _weighted_avg(stats_dict, pools):
+                ws, tw = 0.0, 0
+                for pid, ps in stats_dict.items():
+                    w = max(pools[pid].pg_count, 1) if pid in pools else 1
+                    ws += ps.cv * w
+                    tw += w
+                return ws / tw if tw > 0 else 0.0
+            current_avg_cv = _weighted_avg(current_pool_stats, current.pools)
+            proposed_avg_cv = _weighted_avg(proposed_pool_stats, proposed.pools)
             
             lines.append(f"Average Pool CV: {current_avg_cv:.2%} -> {proposed_avg_cv:.2%}")
             lines.append("")

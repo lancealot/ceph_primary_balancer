@@ -228,6 +228,25 @@ def get_pool_statistics_summary(state: ClusterState) -> Dict[int, Statistics]:
     return pool_stats
 
 
+def calculate_weighted_avg_pool_cv(state: ClusterState) -> float:
+    """PG-weighted average pool CV.
+
+    Weights each pool's CV by its PG count so that small pools
+    (which have inherently high CV due to sparse distributions)
+    don't dominate the average.
+    """
+    pool_stats = get_pool_statistics_summary(state)
+    if not pool_stats:
+        return 0.0
+    weighted_sum = 0.0
+    total_w = 0
+    for pid, ps in pool_stats.items():
+        w = max(state.pools[pid].pg_count, 1) if pid in state.pools else 1
+        weighted_sum += ps.cv * w
+        total_w += w
+    return weighted_sum / total_w if total_w > 0 else 0.0
+
+
 def calculate_average_pool_variance(state: ClusterState) -> float:
     """
     Calculate the average variance across all pools.

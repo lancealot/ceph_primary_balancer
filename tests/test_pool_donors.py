@@ -92,9 +92,12 @@ def test_find_best_swap_proposes_pool_swap_when_osd_balanced():
     """
     With pool-level donors/receivers, find_best_swap should propose swaps
     for pool-imbalanced PGs even when OSD-level balance is perfect.
+    Pool weight must be high enough that pool improvement outweighs the
+    OSD regression from breaking perfect OSD balance. With PG-weighted
+    pool CV, small pools need higher pool weight to be decisive.
     """
     state = _make_pool_imbalanced_cluster()
-    scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+    scorer = Scorer(w_osd=0.2, w_host=0.0, w_pool=0.8, enabled_levels=['osd', 'pool'])
 
     # OSD-level: no donors/receivers
     donors = identify_donors(state.osds)
@@ -124,7 +127,7 @@ def test_find_best_swap_proposes_pool_swap_when_osd_balanced():
 def test_pool_balance_improves_after_swaps():
     """Run multiple swaps and verify Pool 1 variance decreases."""
     state = _make_pool_imbalanced_cluster()
-    scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+    scorer = Scorer(w_osd=0.2, w_host=0.0, w_pool=0.8, enabled_levels=['osd', 'pool'])
 
     pool1 = state.pools[1]
     initial_stats = calculate_pool_statistics(pool1, state.osds)
@@ -297,9 +300,12 @@ def test_find_best_pool_swap_finds_swaps_without_donors():
     """
     find_best_pool_swap should find improving swaps for high-CV pools
     even when no OSD crosses the donor/receiver threshold.
+    Pool weight must be high enough that pool improvement outweighs OSD
+    regression from breaking perfect balance. With PG-weighted pool CV,
+    small pools need higher pool weight to produce net-positive swaps.
     """
     state = _make_pool_imbalanced_cluster()
-    scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+    scorer = Scorer(w_osd=0.2, w_host=0.0, w_pool=0.8, enabled_levels=['osd', 'pool'])
 
     # OSD-level: no donors/receivers (perfectly balanced at OSD level)
     donors = identify_donors(state.osds)
@@ -545,9 +551,10 @@ def test_pool_swap_runs_when_osd_donors_empty():
     Verify that find_best_pool_swap is reached and produces swaps even
     when OSD-level donors/receivers are empty. This tests the structural
     fix: removing the early break that previously skipped pool swap search.
+    With PG-weighted pool CV, small pools need higher pool weight.
     """
     state = _make_pool_imbalanced_cluster()
-    scorer = Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+    scorer = Scorer(w_osd=0.2, w_host=0.0, w_pool=0.8, enabled_levels=['osd', 'pool'])
 
     # OSD-level is perfectly balanced → no donors/receivers
     donors = identify_donors(state.osds)
@@ -570,7 +577,7 @@ def test_pool_swap_runs_when_osd_donors_empty():
     state2 = _make_pool_imbalanced_cluster()
     optimizer = GreedyOptimizer(
         target_cv=0.05, max_iterations=50,
-        scorer=Scorer(w_osd=0.5, w_host=0.0, w_pool=0.5, enabled_levels=['osd', 'pool'])
+        scorer=Scorer(w_osd=0.2, w_host=0.0, w_pool=0.8, enabled_levels=['osd', 'pool'])
     )
     swaps = optimizer.optimize(state2)
     assert len(swaps) > 0, "Optimizer should find swaps via pool search or relaxed threshold"

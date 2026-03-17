@@ -39,6 +39,9 @@ class ScoreComponents:
     pool_sum_sq: Dict[int, int] = field(default_factory=dict)   # pool_id -> sum of squared counts
     pool_total: Dict[int, int] = field(default_factory=dict)    # pool_id -> sum of counts
     pool_n: Dict[int, int] = field(default_factory=dict)        # pool_id -> number of OSDs with primaries
+    # PG-count weights for weighted average pool CV
+    pool_pg_weight: Dict[int, int] = field(default_factory=dict)  # pool_id -> pg_count
+    total_pool_pg_weight: int = 0                                  # sum of all pool pg_counts
 
 
 class Scorer:
@@ -218,7 +221,8 @@ class Scorer:
             score += self.w_host * host_cv
 
         if 'pool' in self.enabled_levels:
-            pool_cvs = []
+            weighted_sum = 0.0
+            total_weight = 0
             if state.pools:
                 for pool in state.pools.values():
                     # Include zeros for participating OSDs without primaries
@@ -226,12 +230,13 @@ class Scorer:
                         counts = [pool.primary_counts.get(oid, 0) for oid in pool.participating_osds if oid in state.osds]
                     else:
                         counts = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
+                    w = max(pool.pg_count, 1)
                     if len(counts) > 1:
                         stats = calculate_statistics(counts)
-                        pool_cvs.append(stats.cv)
-                    elif len(counts) == 1:
-                        pool_cvs.append(0.0)
-            avg_pool_cv = sum(pool_cvs) / len(pool_cvs) if pool_cvs else 0.0
+                        weighted_sum += stats.cv * w
+                    # len==1 contributes cv=0 so nothing to add
+                    total_weight += w
+            avg_pool_cv = weighted_sum / total_weight if total_weight > 0 else 0.0
             score += self.w_pool * avg_pool_cv
 
         return score
@@ -270,6 +275,9 @@ class Scorer:
                 counts_vals = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
                 s = sum(counts_vals)
                 ss = sum(c * c for c in counts_vals)
+                w = max(pool.pg_count, 1)
+                components.pool_pg_weight[pool.pool_id] = w
+                components.total_pool_pg_weight += w
                 if n > 1:
                     var = (ss - s * s / n) / (n - 1)
                     mean = s / n
@@ -286,8 +294,11 @@ class Scorer:
                     components.pool_sum_sq[pool.pool_id] = ss
                     components.pool_total[pool.pool_id] = s
                     components.pool_n[pool.pool_id] = 1
-            if components.pool_cvs:
-                components.avg_pool_cv = sum(components.pool_cvs.values()) / len(components.pool_cvs)
+            if components.pool_cvs and components.total_pool_pg_weight > 0:
+                components.avg_pool_cv = sum(
+                    cv * components.pool_pg_weight.get(pid, 1)
+                    for pid, cv in components.pool_cvs.items()
+                ) / components.total_pool_pg_weight
 
         components.total = (
             self.w_osd * components.osd_cv
@@ -369,12 +380,19 @@ class Scorer:
             else:
                 new_pool_cv = 0.0
 
-            num_pools = len(components.pool_cvs) if components.pool_cvs else 1
-            if pool_id not in components.pool_cvs:
-                num_pools_new = num_pools + 1
-                delta_avg = (sum(components.pool_cvs.values()) + new_pool_cv) / num_pools_new - components.avg_pool_cv
-            elif num_pools > 0:
-                delta_avg = (new_pool_cv - old_pool_cv) / num_pools
+            total_w = components.total_pool_pg_weight
+            pool_w = components.pool_pg_weight.get(pool_id, 1)
+            if total_w > 0:
+                if pool_id not in components.pool_cvs:
+                    # New pool entering the CV map
+                    new_total_w = total_w + pool_w
+                    weighted_sum = sum(
+                        cv * components.pool_pg_weight.get(pid, 1)
+                        for pid, cv in components.pool_cvs.items()
+                    )
+                    delta_avg = (weighted_sum + new_pool_cv * pool_w) / new_total_w - components.avg_pool_cv
+                else:
+                    delta_avg = pool_w * (new_pool_cv - old_pool_cv) / total_w
             else:
                 delta_avg = 0.0
             delta += self.w_pool * delta_avg
@@ -434,14 +452,20 @@ class Scorer:
             from .analyzer import get_pool_statistics_summary
             pool_stats_dict = get_pool_statistics_summary(state)
             if pool_stats_dict:
-                # Calculate average CV across all pools for summary
-                pool_cvs = [ps.cv for ps in pool_stats_dict.values()]
-                if pool_cvs:
-                    avg_pool_cv = sum(pool_cvs) / len(pool_cvs)
-                    avg_pool_std = sum(ps.std_dev for ps in pool_stats_dict.values()) / len(pool_stats_dict)
-                    # Create a summary Statistics object for pool level
+                # PG-weighted average CV across all pools
+                weighted_cv_sum = 0.0
+                weighted_std_sum = 0.0
+                total_weight = 0
+                for pid, ps in pool_stats_dict.items():
+                    w = max(state.pools[pid].pg_count, 1) if pid in state.pools else 1
+                    weighted_cv_sum += ps.cv * w
+                    weighted_std_sum += ps.std_dev * w
+                    total_weight += w
+                if total_weight > 0:
+                    avg_pool_cv = weighted_cv_sum / total_weight
+                    avg_pool_std = weighted_std_sum / total_weight
                     stats['pool'] = Statistics(
-                        mean=avg_pool_std,  # Use avg std_dev as a proxy for mean variance
+                        mean=avg_pool_std,
                         std_dev=avg_pool_std,
                         cv=avg_pool_cv,
                         min_val=0,

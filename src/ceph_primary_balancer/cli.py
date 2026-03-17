@@ -549,8 +549,9 @@ def main():
         pool_stats = get_pool_statistics_summary(state)
         
         if pool_stats:
-            # Calculate average CV across all pools
-            avg_pool_cv = sum(ps.cv for ps in pool_stats.values()) / len(pool_stats)
+            # PG-weighted average CV across all pools
+            from .analyzer import calculate_weighted_avg_pool_cv
+            avg_pool_cv = calculate_weighted_avg_pool_cv(state)
             print(f"Average Pool CV: {avg_pool_cv:.2%}")
             print(f"\nPer-Pool Statistics:")
             
@@ -572,12 +573,10 @@ def main():
         if host_counts and analyzer.calculate_statistics(host_counts).cv > args.target_cv:
             all_below_target = False
     if 'pool' in enabled_levels and state.pools:
-        from .analyzer import get_pool_statistics_summary
-        pool_stats_check = get_pool_statistics_summary(state)
-        if pool_stats_check:
-            avg_cv = sum(ps.cv for ps in pool_stats_check.values()) / len(pool_stats_check)
-            if avg_cv > args.target_cv:
-                all_below_target = False
+        from .analyzer import calculate_weighted_avg_pool_cv
+        avg_cv = calculate_weighted_avg_pool_cv(state)
+        if avg_cv > args.target_cv:
+            all_below_target = False
     if all_below_target:
         print(f"Cluster already balanced across all enabled dimensions (target CV = {args.target_cv:.2%})")
         return
@@ -673,7 +672,8 @@ def main():
         current_pool_stats = get_pool_statistics_summary(state)
         
         if current_pool_stats:
-            avg_pool_cv = sum(ps.cv for ps in current_pool_stats.values()) / len(current_pool_stats)
+            from .analyzer import calculate_weighted_avg_pool_cv
+            avg_pool_cv = calculate_weighted_avg_pool_cv(state)
             print(f"Average Pool CV: {avg_pool_cv:.2%}")
             
             # Show pools with most improvement or focus on filtered pool
