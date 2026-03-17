@@ -16,7 +16,6 @@ Phase 7 Update: Refactored into OptimizerBase architecture while maintaining
 """
 
 from typing import Dict, List, Optional, Set
-import math
 
 from .base import OptimizerBase
 from ..models import ClusterState, OSDInfo, SwapProposal, HostInfo, PoolInfo
@@ -454,20 +453,6 @@ def find_best_focused_swap(
     return best_swap
 
 
-def _osd_cv_floor(mean: float) -> float:
-    """Theoretical minimum OSD CV with integer primary counts.
-
-    With mean primaries/OSD = m, the best integer distribution assigns
-    floor(m) to some OSDs and ceil(m) to others.  The resulting minimum
-    variance is frac*(1-frac) where frac = m - floor(m), giving
-    CV = sqrt(frac*(1-frac)) / m.
-    """
-    if mean <= 0:
-        return 0.0
-    frac = mean - math.floor(mean)
-    min_var = frac * (1.0 - frac)
-    return math.sqrt(min_var) / mean
-
 
 class GreedyOptimizer(OptimizerBase):
     """
@@ -566,16 +551,6 @@ class GreedyOptimizer(OptimizerBase):
         score_at_window_start = None
         stagnation_window_iter = 0
 
-        # Phase transition: shift to pool-heavy scoring when OSD hits floor
-        osd_cv_window_start = None  # OSD CV at start of current window
-        osd_cv_window_iter = 0      # iteration when window started
-        osd_cv_window_size = 50     # check improvement over this many iterations
-        osd_cv_min_improvement = 0.01  # require 1% relative improvement per window
-        pool_phase_scorer = None    # created on demand when phase triggers
-        osd_cv_at_phase_switch = None
-        guardrail_count = 0         # number of times guardrail has fired
-        active_scorer = self.scorer  # may change to pool_phase_scorer
-
         # Main optimization loop
         for iteration in range(self.max_iterations):
             # Check termination conditions
@@ -585,84 +560,6 @@ class GreedyOptimizer(OptimizerBase):
                     stats = analyzer.calculate_statistics(primary_counts)
                     print(f"Target OSD-level CV {self.target_cv:.2%} achieved!")
                 break
-
-            # Phase transition: detect OSD CV floor and shift to pool-heavy scoring
-            if pool_phase_scorer is None and 'pool' in self.scorer.enabled_levels:
-                primary_counts = [osd.primary_count for osd in state.osds.values()]
-                current_osd_cv = analyzer.calculate_statistics(primary_counts).cv
-                osd_mean = sum(primary_counts) / len(primary_counts)
-                floor_cv = _osd_cv_floor(osd_mean)
-
-                # Initialize window on first iteration
-                if osd_cv_window_start is None:
-                    osd_cv_window_start = current_osd_cv
-                    osd_cv_window_iter = iteration
-
-                # Check improvement over the window
-                if iteration - osd_cv_window_iter >= osd_cv_window_size:
-                    relative_improvement = (osd_cv_window_start - current_osd_cv) / max(osd_cv_window_start, 1e-9)
-                    if (relative_improvement < osd_cv_min_improvement
-                            and current_osd_cv < floor_cv * 1.5):
-                        # OSD CV stalled near its integer floor — shift weight to pools.
-                        # Start with moderate weights to limit OSD regression; the
-                        # guardrail escalation can tighten further if needed.
-                        pool_phase_scorer = Scorer(
-                            w_osd=0.30, w_host=0.10, w_pool=0.60,
-                            enabled_levels=['osd', 'host', 'pool'],
-                        )
-                        active_scorer = pool_phase_scorer
-                        osd_cv_at_phase_switch = current_osd_cv
-                        # Reset stagnation window — scorer changed, old
-                        # baseline is meaningless under new weights
-                        score_at_window_start = None
-                        if self.verbose:
-                            print(f"  [phase transition] OSD CV {current_osd_cv:.2%} "
-                                  f"stalled near integer floor ({floor_cv:.2%}), "
-                                  f"switching to pool-heavy scoring (0.30/0.10/0.60)")
-                    else:
-                        # Reset window
-                        osd_cv_window_start = current_osd_cv
-                        osd_cv_window_iter = iteration
-
-            # Guardrail: if pool-phase scoring pushed OSD CV too high, dial
-            # back to moderate pool weights instead of fully reverting.
-            # Each successive guardrail trigger increases OSD weight, so
-            # we converge toward a sustainable balance between dimensions.
-            if pool_phase_scorer is not None and osd_cv_at_phase_switch is not None:
-                primary_counts_check = [osd.primary_count for osd in state.osds.values()]
-                check_cv = analyzer.calculate_statistics(primary_counts_check).cv
-                # Allow max 30% regression from the OSD CV at phase switch
-                guardrail = osd_cv_at_phase_switch * 1.3
-                if check_cv > guardrail:
-                    guardrail_count += 1
-                    if guardrail_count >= 3:
-                        # After 3 guardrail triggers, fully revert — we can't
-                        # make further pool progress without too much OSD cost
-                        if self.verbose:
-                            print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
-                                  f"limit {guardrail:.2%} (trigger #{guardrail_count}), "
-                                  f"reverting to composite scoring")
-                        pool_phase_scorer = None
-                        active_scorer = self.scorer
-                    else:
-                        # Escalate to aggressive pool-heavy weights — the
-                        # moderate weights (0.30/0.10/0.60) aren't making
-                        # enough pool progress, so push harder on pools
-                        pool_phase_scorer = Scorer(
-                            w_osd=0.15, w_host=0.05, w_pool=0.80,
-                            enabled_levels=['osd', 'host', 'pool'],
-                        )
-                        active_scorer = pool_phase_scorer
-                        if self.verbose:
-                            print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
-                                  f"limit {guardrail:.2%} (trigger #{guardrail_count}), "
-                                  f"escalating to aggressive pool scoring (0.15/0.05/0.80)")
-                    # Update phase-switch baseline and reset windows
-                    osd_cv_at_phase_switch = check_cv
-                    osd_cv_window_start = check_cv
-                    osd_cv_window_iter = iteration
-                    # Reset stagnation window — scorer changed
-                    score_at_window_start = None
 
             # Identify donors and receivers at OSD level
             donors = analyzer.identify_donors(state.osds)
@@ -688,7 +585,7 @@ class GreedyOptimizer(OptimizerBase):
                 search_state = state
 
             # Find best swap using donor/receiver filtering
-            swap = find_best_swap(search_state, donors, receivers, active_scorer,
+            swap = find_best_swap(search_state, donors, receivers, self.scorer,
                                   pool_donors, pool_receivers)
 
             # If normal threshold found nothing, retry with relaxed threshold
@@ -703,12 +600,12 @@ class GreedyOptimizer(OptimizerBase):
                     state, threshold_pct=0.0
                 )
                 swap = find_best_swap(search_state, relaxed_donors, relaxed_receivers,
-                                      active_scorer, relaxed_pool_d, relaxed_pool_r)
+                                      self.scorer, relaxed_pool_d, relaxed_pool_r)
 
             # Also search for pool-targeted swaps (catches candidates that
             # donor/receiver filtering misses for small/imbalanced pools).
             # Compare with whatever the global search found and pick the best.
-            pool_swap = find_best_pool_swap(state, active_scorer, self.target_cv)
+            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
             if pool_swap is not None:
                 if swap is None or pool_swap.score_improvement > swap.score_improvement:
                     swap = pool_swap
@@ -718,7 +615,7 @@ class GreedyOptimizer(OptimizerBase):
             used_focused_fallback = False
             if swap is None:
                 swap = find_best_focused_swap(
-                    state, active_scorer, self.target_cv,
+                    state, self.scorer, self.target_cv,
                     max_regression=0.001,
                 )
                 if swap is not None:
@@ -766,9 +663,7 @@ class GreedyOptimizer(OptimizerBase):
 
             # Global stagnation detection: if the composite score hasn't
             # improved meaningfully over a window of iterations, stop.
-            # This catches the phase-transition oscillation cycle where
-            # different search paths churn without net progress.
-            current_composite = active_scorer.calculate_score(state)
+            current_composite = self.scorer.calculate_score(state)
             if score_at_window_start is None:
                 score_at_window_start = current_composite
                 stagnation_window_iter = iteration
