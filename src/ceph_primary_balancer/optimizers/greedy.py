@@ -603,9 +603,11 @@ class GreedyOptimizer(OptimizerBase):
                     relative_improvement = (osd_cv_window_start - current_osd_cv) / max(osd_cv_window_start, 1e-9)
                     if (relative_improvement < osd_cv_min_improvement
                             and current_osd_cv < floor_cv * 1.5):
-                        # OSD CV stalled near its integer floor — shift weight to pools
+                        # OSD CV stalled near its integer floor — shift weight to pools.
+                        # Start with moderate weights to limit OSD regression; the
+                        # guardrail escalation can tighten further if needed.
                         pool_phase_scorer = Scorer(
-                            w_osd=0.15, w_host=0.05, w_pool=0.80,
+                            w_osd=0.30, w_host=0.10, w_pool=0.60,
                             enabled_levels=['osd', 'host', 'pool'],
                         )
                         active_scorer = pool_phase_scorer
@@ -616,7 +618,7 @@ class GreedyOptimizer(OptimizerBase):
                         if self.verbose:
                             print(f"  [phase transition] OSD CV {current_osd_cv:.2%} "
                                   f"stalled near integer floor ({floor_cv:.2%}), "
-                                  f"switching to pool-heavy scoring (0.15/0.05/0.80)")
+                                  f"switching to pool-heavy scoring (0.30/0.10/0.60)")
                     else:
                         # Reset window
                         osd_cv_window_start = current_osd_cv
@@ -643,17 +645,18 @@ class GreedyOptimizer(OptimizerBase):
                         pool_phase_scorer = None
                         active_scorer = self.scorer
                     else:
-                        # Use moderate pool-heavy weights — less aggressive
-                        # than 0.15/0.05/0.80 so OSD doesn't degrade as fast
+                        # Escalate to aggressive pool-heavy weights — the
+                        # moderate weights (0.30/0.10/0.60) aren't making
+                        # enough pool progress, so push harder on pools
                         pool_phase_scorer = Scorer(
-                            w_osd=0.35, w_host=0.10, w_pool=0.55,
+                            w_osd=0.15, w_host=0.05, w_pool=0.80,
                             enabled_levels=['osd', 'host', 'pool'],
                         )
                         active_scorer = pool_phase_scorer
                         if self.verbose:
                             print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
                                   f"limit {guardrail:.2%} (trigger #{guardrail_count}), "
-                                  f"switching to moderate pool scoring (0.35/0.10/0.55)")
+                                  f"escalating to aggressive pool scoring (0.15/0.05/0.80)")
                     # Update phase-switch baseline and reset windows
                     osd_cv_at_phase_switch = check_cv
                     osd_cv_window_start = check_cv
@@ -765,7 +768,7 @@ class GreedyOptimizer(OptimizerBase):
             # improved meaningfully over a window of iterations, stop.
             # This catches the phase-transition oscillation cycle where
             # different search paths churn without net progress.
-            current_composite = self.scorer.calculate_score(state)
+            current_composite = active_scorer.calculate_score(state)
             if score_at_window_start is None:
                 score_at_window_start = current_composite
                 stagnation_window_iter = iteration
