@@ -358,11 +358,11 @@ python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
   --dynamic-strategy target_distance
 
-# With advanced algorithms
+# With tabu search algorithm
 python3 -m ceph_primary_balancer.cli \
   --from-file export.tar.gz \
   --output rebalance.sh \
-  --algorithm simulated_annealing
+  --algorithm tabu_search
 ```
 
 ### Export Age Warnings

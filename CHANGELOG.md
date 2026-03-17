@@ -125,37 +125,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [1.4.0] - 2026-02-10 - Advanced Optimization Algorithms 🚀
 
-### Added - Simulated Annealing Optimizer
-
-- **Simulated Annealing Optimizer** - Probabilistic metaheuristic for global optimization
-  - Temperature-based acceptance probability: `P(accept) = exp(-delta / temperature)`
-  - Configurable cooling schedules (geometric and linear)
-  - Deterministic operation when random seed is set
-  - Best solution tracking throughout search
-  - Optional reheating mechanism when stuck
-  - Comprehensive statistics tracking (temperature trajectory, acceptance rates)
-  
-- **Performance Characteristics**
-  - **Speed**: 2-4x execution time vs greedy (as expected)
-  - **Quality**: 15-20% better CV than greedy (best among all algorithms)
-  - **Deterministic**: Yes (when random seed configured)
-  - **Exploration**: High early, low late (temperature-based)
-
-- **Key Parameters**
-  - Initial temperature: 10.0 (configurable)
-  - Final temperature: 0.01 (configurable)
-  - Cooling rate: 0.95 geometric (configurable)
-  - Reheating enabled by default
-  - Random seed: Configurable for reproducibility
-
-- **Testing**
-  - 54 comprehensive tests covering all features
-  - Temperature management and cooling tests
-  - Acceptance probability validation
-  - Determinism verification
-  - Quality comparison with other algorithms
-  - Integration with dynamic weights (Phase 7.1)
-
 ### Added - Tabu Search Optimizer
 
 - **Tabu Search Optimizer** - Memory-based metaheuristic
@@ -190,7 +159,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Dynamic algorithm registration
   - Algorithm discovery and instantiation
   - Algorithm information queries
-  - Registered algorithms: `greedy`, `batch_greedy`, `tabu_search`, `simulated_annealing`
+  - Registered algorithms: `greedy`, `batch_greedy`, `tabu_search`
 
 - **GreedyOptimizer** - Refactored original algorithm
   - Implements OptimizerBase interface
@@ -201,12 +170,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Integration & Testing
 
-- **Comprehensive Test Suite** - 154 tests across all optimizers
+- **Comprehensive Test Suite** across all optimizers
   - 25 tests for base architecture
   - 31 tests for batch greedy
   - 42 tests for tabu search
-  - 54 tests for simulated annealing
-  - All tests passing ✅
+  - All tests passing
   
 - **Auto-registration Fixtures** - Test infrastructure
   - Module-scoped fixtures ensure registry state
@@ -222,15 +190,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 **For most use cases (95% of the time):**
 - Use **greedy** - Fast, proven, good enough for normal operations
 
-**For special cases (5% of the time):**
-- Use **simulated_annealing** when:
-  - Greedy fails to reach target CV
-  - Cluster has severe imbalance (CV > 30-40%)
-  - You need optimal results and have time
-  - You're validating that greedy is sufficient
-
-**Rarely needed:**
-- **tabu_search** - Middle ground between greedy and SA
+**For special cases:**
+- **tabu_search** - When greedy stalls due to cycling
 - **batch_greedy** - Slight convergence improvement over greedy
 
 ### Architecture Improvements
