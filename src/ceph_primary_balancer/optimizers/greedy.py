@@ -544,11 +544,10 @@ class GreedyOptimizer(OptimizerBase):
         fallback_window: List[bool] = []  # rolling window of was-fallback flags
         worst_cv_at_fallback_window_start: Optional[float] = None
 
-        # Global stagnation detection: stop when composite score plateaus
-        # across ALL search paths (not just focused fallback)
+        # Global stagnation detection: stop when worst aggregate dimension
+        # plateaus across ALL search paths (not just focused fallback)
         stagnation_window = 50       # check progress over this many iterations
-        stagnation_threshold = 0.001 # minimum absolute score improvement required
-        score_at_window_start = None
+        stagnation_cv_at_window_start: Optional[float] = None
         stagnation_window_iter = 0
 
         # Main optimization loop
@@ -630,11 +629,12 @@ class GreedyOptimizer(OptimizerBase):
 
             # Stall detection: track focused fallback usage in a rolling
             # window.  If fallback fires >= stall_limit times within the
-            # last fallback_window_size iterations AND the worst dimension
-            # hasn't improved, we're stuck.  We check the worst dimension's
-            # CV rather than composite score because focused fallback
-            # deliberately accepts composite regression to improve the
-            # stuck dimension.
+            # last fallback_window_size iterations AND no aggregate
+            # dimension improved, we're stuck.  We check aggregate CVs
+            # (OSD, Host, weighted-average Pool) rather than individual
+            # pool CVs or composite score, because focused fallback
+            # deliberately accepts composite regression and may improve
+            # some pools while others stay stuck.
             fallback_window.append(used_focused_fallback)
             if len(fallback_window) > fallback_window_size:
                 fallback_window.pop(0)
@@ -647,20 +647,19 @@ class GreedyOptimizer(OptimizerBase):
                 if 'host' in self.scorer.enabled_levels:
                     dim_cvs.append(components.host_cv)
                 if 'pool' in self.scorer.enabled_levels:
-                    for pcv in components.pool_cvs.values():
-                        dim_cvs.append(pcv)
+                    dim_cvs.append(components.avg_pool_cv)
                 worst_cv = max(dim_cvs) if dim_cvs else 0.0
 
                 if worst_cv_at_fallback_window_start is None:
                     worst_cv_at_fallback_window_start = worst_cv
                 if worst_cv >= worst_cv_at_fallback_window_start * 0.99:
-                    # Worst dimension hasn't improved by 1% — truly stalled
+                    # Worst aggregate dimension hasn't improved by 1% — truly stalled
                     if self.verbose:
                         print(f"Stalled: {fallback_count} focused-fallback iterations "
                               f"in last {len(fallback_window)}, worst CV {worst_cv:.2%} "
                               f"not improving (was {worst_cv_at_fallback_window_start:.2%})")
                     break
-                # Worst dimension is improving — continue
+                # Some dimension is improving — continue
                 fallback_window.clear()
                 worst_cv_at_fallback_window_start = worst_cv
             
@@ -673,21 +672,30 @@ class GreedyOptimizer(OptimizerBase):
             self.stats.swaps_applied += 1
             self._record_iteration(state)
 
-            # Global stagnation detection: if the composite score hasn't
-            # improved meaningfully over a window of iterations, stop.
-            current_composite = self.scorer.calculate_score(state)
-            if score_at_window_start is None:
-                score_at_window_start = current_composite
+            # Global stagnation detection: if the worst aggregate dimension
+            # hasn't improved over a window of iterations, stop.
+            stag_components = self.scorer.calculate_score_with_components(state)
+            stag_cvs = []
+            if 'osd' in self.scorer.enabled_levels:
+                stag_cvs.append(stag_components.osd_cv)
+            if 'host' in self.scorer.enabled_levels:
+                stag_cvs.append(stag_components.host_cv)
+            if 'pool' in self.scorer.enabled_levels:
+                stag_cvs.append(stag_components.avg_pool_cv)
+            stag_worst_cv = max(stag_cvs) if stag_cvs else 0.0
+
+            if stagnation_cv_at_window_start is None:
+                stagnation_cv_at_window_start = stag_worst_cv
                 stagnation_window_iter = iteration
             elif iteration - stagnation_window_iter >= stagnation_window:
-                improvement = score_at_window_start - current_composite
-                if improvement < stagnation_threshold:
+                if stag_worst_cv >= stagnation_cv_at_window_start * 0.99:
                     if self.verbose:
-                        print(f"  [stagnation] score improved only {improvement:.6f} "
+                        print(f"  [stagnation] worst CV {stag_worst_cv:.2%} not improving "
+                              f"(was {stagnation_cv_at_window_start:.2%}) "
                               f"over last {stagnation_window} iterations, stopping")
                     break
                 # Reset window
-                score_at_window_start = current_composite
+                stagnation_cv_at_window_start = stag_worst_cv
                 stagnation_window_iter = iteration
 
             # Print progress every 10 iterations
