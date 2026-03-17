@@ -125,17 +125,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [1.4.0] - 2026-02-10 - Advanced Optimization Algorithms 🚀
 
-### Added - Tabu Search Optimizer
-
-- **Tabu Search Optimizer** - Memory-based metaheuristic
-  - Tabu list management with configurable tenure
-  - Aspiration criteria for accepting beneficial tabu moves
-  - Optional diversification (restart from best when stuck)
-  - Best solution tracking
-  - **Speed**: 1.5-3x slower than greedy
-  - **Quality**: 10-15% better CV than greedy
-  - **Deterministic**: Yes
-
 ### Added - Batch Greedy Optimizer
 
 - **Batch Greedy Optimizer** - Multiple swaps per iteration
@@ -159,7 +148,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Dynamic algorithm registration
   - Algorithm discovery and instantiation
   - Algorithm information queries
-  - Registered algorithms: `greedy`, `batch_greedy`, `tabu_search`
+  - Registered algorithms: `greedy`, `batch_greedy`
 
 - **GreedyOptimizer** - Refactored original algorithm
   - Implements OptimizerBase interface
@@ -173,7 +162,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Comprehensive Test Suite** across all optimizers
   - 25 tests for base architecture
   - 31 tests for batch greedy
-  - 42 tests for tabu search
   - All tests passing
   
 - **Auto-registration Fixtures** - Test infrastructure
@@ -191,8 +179,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Use **greedy** - Fast, proven, good enough for normal operations
 
 **For special cases:**
-- **tabu_search** - When greedy stalls due to cycling
-- **batch_greedy** - Slight convergence improvement over greedy
+- **batch_greedy** - Multiple non-conflicting swaps per iteration for faster convergence
 
 ### Architecture Improvements
 

@@ -38,8 +38,7 @@ src/ceph_primary_balancer/
 ├── optimizers/        # Optimization algorithms
 │   ├── base.py        # OptimizerBase ABC, OptimizerRegistry, stats tracking
 │   ├── greedy.py      # Greedy optimizer (primary algorithm) with O(1) delta scoring
-│   ├── batch_greedy.py
-│   └── tabu_search.py
+│   └── batch_greedy.py
 ├── reporter.py        # Terminal output
 ├── exporter.py        # JSON export
 ├── script_generator.py # Generates bash scripts with pg-upmap-primary commands
