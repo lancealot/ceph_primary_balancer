@@ -550,14 +550,18 @@ class GreedyOptimizer(OptimizerBase):
                 print(f"Warning: Pool filter {self.pool_filter} not found in cluster, ignoring filter")
                 self.pool_filter = None
         
-        # Stall detection: stop when focused fallback churns without progress
+        # Stall detection: stop when focused fallback churns without progress.
+        # Uses a rolling window instead of strict consecutive count, because
+        # normal search paths may occasionally find swaps (also useless),
+        # resetting a consecutive counter and letting the loop continue.
         stall_limit = 10
-        consecutive_fallback = 0
-        best_score_at_fallback_start = float('inf')
+        fallback_window_size = 20   # track fallback usage over this many iterations
+        fallback_window: List[bool] = []  # rolling window of was-fallback flags
+        best_score_at_fallback_window_start = float('inf')
 
         # Global stagnation detection: stop when composite score plateaus
         # across ALL search paths (not just focused fallback)
-        stagnation_window = 100      # check progress over this many iterations
+        stagnation_window = 50       # check progress over this many iterations
         stagnation_threshold = 0.001 # minimum absolute score improvement required
         score_at_window_start = None
         stagnation_window_iter = 0
@@ -569,6 +573,7 @@ class GreedyOptimizer(OptimizerBase):
         osd_cv_min_improvement = 0.01  # require 1% relative improvement per window
         pool_phase_scorer = None    # created on demand when phase triggers
         osd_cv_at_phase_switch = None
+        guardrail_count = 0         # number of times guardrail has fired
         active_scorer = self.scorer  # may change to pool_phase_scorer
 
         # Main optimization loop
@@ -614,19 +619,40 @@ class GreedyOptimizer(OptimizerBase):
                         osd_cv_window_start = current_osd_cv
                         osd_cv_window_iter = iteration
 
-            # Guardrail: if pool-phase scoring pushed OSD CV too high, revert
+            # Guardrail: if pool-phase scoring pushed OSD CV too high, dial
+            # back to moderate pool weights instead of fully reverting.
+            # Each successive guardrail trigger increases OSD weight, so
+            # we converge toward a sustainable balance between dimensions.
             if pool_phase_scorer is not None and osd_cv_at_phase_switch is not None:
                 primary_counts_check = [osd.primary_count for osd in state.osds.values()]
                 check_cv = analyzer.calculate_statistics(primary_counts_check).cv
                 # Allow max 30% regression from the OSD CV at phase switch
                 guardrail = osd_cv_at_phase_switch * 1.3
                 if check_cv > guardrail:
-                    if self.verbose:
-                        print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
-                              f"limit {guardrail:.2%}, reverting to composite scoring")
-                    pool_phase_scorer = None
-                    active_scorer = self.scorer
-                    # Reset window for potential re-trigger
+                    guardrail_count += 1
+                    if guardrail_count >= 3:
+                        # After 3 guardrail triggers, fully revert — we can't
+                        # make further pool progress without too much OSD cost
+                        if self.verbose:
+                            print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
+                                  f"limit {guardrail:.2%} (trigger #{guardrail_count}), "
+                                  f"reverting to composite scoring")
+                        pool_phase_scorer = None
+                        active_scorer = self.scorer
+                    else:
+                        # Use moderate pool-heavy weights — less aggressive
+                        # than 0.15/0.05/0.80 so OSD doesn't degrade as fast
+                        pool_phase_scorer = Scorer(
+                            w_osd=0.35, w_host=0.10, w_pool=0.55,
+                            enabled_levels=['osd', 'host', 'pool'],
+                        )
+                        active_scorer = pool_phase_scorer
+                        if self.verbose:
+                            print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
+                                  f"limit {guardrail:.2%} (trigger #{guardrail_count}), "
+                                  f"switching to moderate pool scoring (0.35/0.10/0.55)")
+                    # Update phase-switch baseline and reset window
+                    osd_cv_at_phase_switch = check_cv
                     osd_cv_window_start = check_cv
                     osd_cv_window_iter = iteration
 
@@ -697,25 +723,29 @@ class GreedyOptimizer(OptimizerBase):
                     print("No beneficial swaps found")
                 break
 
-            # Stall detection: if focused fallback fires repeatedly without
-            # meaningful composite improvement, we're stuck.  Use a tight
-            # threshold (not 1e-9) to catch oscillating swaps that bounce
-            # the score by tiny amounts without real progress.
-            if used_focused_fallback:
-                if consecutive_fallback == 0:
-                    best_score_at_fallback_start = self.scorer.calculate_score(state)
-                consecutive_fallback += 1
-                if consecutive_fallback >= stall_limit:
-                    current_score = self.scorer.calculate_score(state)
-                    if current_score >= best_score_at_fallback_start - 0.0005:
-                        if self.verbose:
-                            print(f"Stalled: {stall_limit} consecutive focused-fallback iterations with no meaningful improvement")
-                        break
-                    # Score did improve — reset and keep going
-                    consecutive_fallback = 0
-                    best_score_at_fallback_start = current_score
-            else:
-                consecutive_fallback = 0
+            # Stall detection: track focused fallback usage in a rolling
+            # window.  If fallback fires >= stall_limit times within the
+            # last fallback_window_size iterations AND the composite score
+            # hasn't meaningfully improved, we're stuck.  Using a rolling
+            # window instead of strictly consecutive count catches cases
+            # where normal search paths occasionally find (also useless)
+            # swaps that would reset a consecutive counter.
+            fallback_window.append(used_focused_fallback)
+            if len(fallback_window) > fallback_window_size:
+                fallback_window.pop(0)
+            fallback_count = sum(fallback_window)
+            if fallback_count >= stall_limit:
+                current_score = self.scorer.calculate_score(state)
+                if len(fallback_window) == 1 or best_score_at_fallback_window_start == float('inf'):
+                    best_score_at_fallback_window_start = current_score
+                if current_score >= best_score_at_fallback_window_start - 0.0005:
+                    if self.verbose:
+                        print(f"Stalled: {fallback_count} focused-fallback iterations "
+                              f"in last {len(fallback_window)} with no meaningful improvement")
+                    break
+                # Score did improve — reset window
+                fallback_window.clear()
+                best_score_at_fallback_window_start = current_score
             
             # Apply swap to state
             apply_swap(state, swap)
