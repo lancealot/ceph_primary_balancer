@@ -610,6 +610,9 @@ class GreedyOptimizer(OptimizerBase):
                         )
                         active_scorer = pool_phase_scorer
                         osd_cv_at_phase_switch = current_osd_cv
+                        # Reset stagnation window — scorer changed, old
+                        # baseline is meaningless under new weights
+                        score_at_window_start = None
                         if self.verbose:
                             print(f"  [phase transition] OSD CV {current_osd_cv:.2%} "
                                   f"stalled near integer floor ({floor_cv:.2%}), "
@@ -651,10 +654,12 @@ class GreedyOptimizer(OptimizerBase):
                             print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
                                   f"limit {guardrail:.2%} (trigger #{guardrail_count}), "
                                   f"switching to moderate pool scoring (0.35/0.10/0.55)")
-                    # Update phase-switch baseline and reset window
+                    # Update phase-switch baseline and reset windows
                     osd_cv_at_phase_switch = check_cv
                     osd_cv_window_start = check_cv
                     osd_cv_window_iter = iteration
+                    # Reset stagnation window — scorer changed
+                    score_at_window_start = None
 
             # Identify donors and receivers at OSD level
             donors = analyzer.identify_donors(state.osds)
