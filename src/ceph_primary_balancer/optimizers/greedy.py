@@ -545,11 +545,12 @@ class GreedyOptimizer(OptimizerBase):
         consecutive_fallback = 0
         best_score_at_fallback_start = float('inf')
 
-        # Phase transition: switch to pool-only scoring when OSD hits floor
-        osd_floor_stall_count = 0
-        osd_floor_stall_limit = 50
-        last_osd_cv = None
-        pool_phase_scorer = None  # created on demand when phase triggers
+        # Phase transition: shift to pool-heavy scoring when OSD hits floor
+        osd_cv_window_start = None  # OSD CV at start of current window
+        osd_cv_window_iter = 0      # iteration when window started
+        osd_cv_window_size = 50     # check improvement over this many iterations
+        osd_cv_min_improvement = 0.01  # require 1% relative improvement per window
+        pool_phase_scorer = None    # created on demand when phase triggers
         osd_cv_at_phase_switch = None
         active_scorer = self.scorer  # may change to pool_phase_scorer
 
@@ -563,47 +564,54 @@ class GreedyOptimizer(OptimizerBase):
                     print(f"Target OSD-level CV {self.target_cv:.2%} achieved!")
                 break
 
-            # Phase transition: detect OSD CV floor and switch to pool-only
+            # Phase transition: detect OSD CV floor and shift to pool-heavy scoring
             if pool_phase_scorer is None and 'pool' in self.scorer.enabled_levels:
                 primary_counts = [osd.primary_count for osd in state.osds.values()]
                 current_osd_cv = analyzer.calculate_statistics(primary_counts).cv
                 osd_mean = sum(primary_counts) / len(primary_counts)
                 floor_cv = _osd_cv_floor(osd_mean)
 
-                if last_osd_cv is not None:
-                    # OSD CV "not improving" = within 0.5% of previous
-                    if current_osd_cv >= last_osd_cv - 0.005:
-                        osd_floor_stall_count += 1
-                    else:
-                        osd_floor_stall_count = 0
+                # Initialize window on first iteration
+                if osd_cv_window_start is None:
+                    osd_cv_window_start = current_osd_cv
+                    osd_cv_window_iter = iteration
 
-                    if (osd_floor_stall_count >= osd_floor_stall_limit
-                            and current_osd_cv < floor_cv * 2.0):
+                # Check improvement over the window
+                if iteration - osd_cv_window_iter >= osd_cv_window_size:
+                    relative_improvement = (osd_cv_window_start - current_osd_cv) / max(osd_cv_window_start, 1e-9)
+                    if (relative_improvement < osd_cv_min_improvement
+                            and current_osd_cv < floor_cv * 1.5):
+                        # OSD CV stalled near its integer floor — shift weight to pools
                         pool_phase_scorer = Scorer(
-                            w_osd=0.0, w_host=0.0, w_pool=1.0,
-                            enabled_levels=['pool'],
+                            w_osd=0.15, w_host=0.05, w_pool=0.80,
+                            enabled_levels=['osd', 'host', 'pool'],
                         )
                         active_scorer = pool_phase_scorer
                         osd_cv_at_phase_switch = current_osd_cv
                         if self.verbose:
                             print(f"  [phase transition] OSD CV {current_osd_cv:.2%} "
-                                  f"at integer floor ({floor_cv:.2%}), "
-                                  f"switching to pool-only scoring")
-                last_osd_cv = current_osd_cv
+                                  f"stalled near integer floor ({floor_cv:.2%}), "
+                                  f"switching to pool-heavy scoring (0.15/0.05/0.80)")
+                    else:
+                        # Reset window
+                        osd_cv_window_start = current_osd_cv
+                        osd_cv_window_iter = iteration
 
             # Guardrail: if pool-phase scoring pushed OSD CV too high, revert
             if pool_phase_scorer is not None and osd_cv_at_phase_switch is not None:
                 primary_counts_check = [osd.primary_count for osd in state.osds.values()]
                 check_cv = analyzer.calculate_statistics(primary_counts_check).cv
-                osd_mean_check = sum(primary_counts_check) / len(primary_counts_check)
-                guardrail = max(_osd_cv_floor(osd_mean_check) * 3.0, osd_cv_at_phase_switch * 1.5)
+                # Allow max 30% regression from the OSD CV at phase switch
+                guardrail = osd_cv_at_phase_switch * 1.3
                 if check_cv > guardrail:
                     if self.verbose:
                         print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
                               f"limit {guardrail:.2%}, reverting to composite scoring")
                     pool_phase_scorer = None
                     active_scorer = self.scorer
-                    osd_floor_stall_count = 0
+                    # Reset window for potential re-trigger
+                    osd_cv_window_start = check_cv
+                    osd_cv_window_iter = iteration
 
             # Identify donors and receivers at OSD level
             donors = analyzer.identify_donors(state.osds)
