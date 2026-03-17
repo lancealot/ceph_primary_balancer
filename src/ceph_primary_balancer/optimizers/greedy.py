@@ -542,7 +542,7 @@ class GreedyOptimizer(OptimizerBase):
         stall_limit = 10
         fallback_window_size = 20   # track fallback usage over this many iterations
         fallback_window: List[bool] = []  # rolling window of was-fallback flags
-        best_score_at_fallback_window_start = float('inf')
+        worst_cv_at_fallback_window_start: Optional[float] = None
 
         # Global stagnation detection: stop when composite score plateaus
         # across ALL search paths (not just focused fallback)
@@ -630,27 +630,39 @@ class GreedyOptimizer(OptimizerBase):
 
             # Stall detection: track focused fallback usage in a rolling
             # window.  If fallback fires >= stall_limit times within the
-            # last fallback_window_size iterations AND the composite score
-            # hasn't meaningfully improved, we're stuck.  Using a rolling
-            # window instead of strictly consecutive count catches cases
-            # where normal search paths occasionally find (also useless)
-            # swaps that would reset a consecutive counter.
+            # last fallback_window_size iterations AND the worst dimension
+            # hasn't improved, we're stuck.  We check the worst dimension's
+            # CV rather than composite score because focused fallback
+            # deliberately accepts composite regression to improve the
+            # stuck dimension.
             fallback_window.append(used_focused_fallback)
             if len(fallback_window) > fallback_window_size:
                 fallback_window.pop(0)
             fallback_count = sum(fallback_window)
             if fallback_count >= stall_limit:
-                current_score = self.scorer.calculate_score(state)
-                if len(fallback_window) == 1 or best_score_at_fallback_window_start == float('inf'):
-                    best_score_at_fallback_window_start = current_score
-                if current_score >= best_score_at_fallback_window_start - 0.0005:
+                components = self.scorer.calculate_score_with_components(state)
+                dim_cvs = []
+                if 'osd' in self.scorer.enabled_levels:
+                    dim_cvs.append(components.osd_cv)
+                if 'host' in self.scorer.enabled_levels:
+                    dim_cvs.append(components.host_cv)
+                if 'pool' in self.scorer.enabled_levels:
+                    for pcv in components.pool_cvs.values():
+                        dim_cvs.append(pcv)
+                worst_cv = max(dim_cvs) if dim_cvs else 0.0
+
+                if worst_cv_at_fallback_window_start is None:
+                    worst_cv_at_fallback_window_start = worst_cv
+                if worst_cv >= worst_cv_at_fallback_window_start * 0.99:
+                    # Worst dimension hasn't improved by 1% — truly stalled
                     if self.verbose:
                         print(f"Stalled: {fallback_count} focused-fallback iterations "
-                              f"in last {len(fallback_window)} with no meaningful improvement")
+                              f"in last {len(fallback_window)}, worst CV {worst_cv:.2%} "
+                              f"not improving (was {worst_cv_at_fallback_window_start:.2%})")
                     break
-                # Score did improve — reset window
+                # Worst dimension is improving — continue
                 fallback_window.clear()
-                best_score_at_fallback_window_start = current_score
+                worst_cv_at_fallback_window_start = worst_cv
             
             # Apply swap to state
             apply_swap(state, swap)
