@@ -168,6 +168,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         # Temperature tracking
         self._current_temperature = initial_temperature
         self._calibrated_temp = initial_temperature
+        self._scaled_final = final_temperature
         self._effective_cooling_rate = cooling_rate
         
         # Best solution tracking
@@ -219,11 +220,11 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
 
         # Compute cooling_rate so temperature reaches final_temperature
         # by max_iterations: T_final = T_init * rate^N
+        # Scale final_temperature proportionally to the calibrated start
+        self._scaled_final = self._calibrated_temp * (self.final_temperature / self.initial_temperature)
+        self._scaled_final = max(self._scaled_final, 1e-12)
         if self.cooling_schedule == 'geometric' and self.max_iterations > 0:
-            # Scale final_temperature relative to calibrated start
-            scaled_final = self._calibrated_temp * (self.final_temperature / self.initial_temperature)
-            scaled_final = max(scaled_final, 1e-12)
-            self._effective_cooling_rate = (scaled_final / self._calibrated_temp) ** (1.0 / self.max_iterations)
+            self._effective_cooling_rate = (self._scaled_final / self._calibrated_temp) ** (1.0 / self.max_iterations)
         else:
             self._effective_cooling_rate = self.cooling_rate
 
@@ -252,8 +253,8 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
                     print(f"\n✓ Target CV reached at iteration {iteration}")
                 break
             
-            # Check if temperature is too low
-            if self._current_temperature < self.final_temperature:
+            # Check if temperature is too low (scaled to calibrated range)
+            if self._current_temperature < self._scaled_final:
                 if self.verbose:
                     print(f"\n✓ Temperature cooled to minimum at iteration {iteration}")
                 break
