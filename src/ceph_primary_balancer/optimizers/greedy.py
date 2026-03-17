@@ -20,7 +20,7 @@ import math
 
 from .base import OptimizerBase
 from ..models import ClusterState, OSDInfo, SwapProposal, HostInfo, PoolInfo
-from ..scorer import Scorer
+from ..scorer import Scorer, _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
 from .. import analyzer
 
 
@@ -454,26 +454,6 @@ def find_best_focused_swap(
     return best_swap
 
 
-def _pool_cv_floor(num_pgs: int, num_participating: int) -> float:
-    """Theoretical minimum pool CV given integer primary constraints.
-
-    With k PGs and n participating OSDs:
-    - If k < n: best case is k OSDs with 1 primary, (n-k) with 0.
-      mean = k/n, var = k(n-k)/(n²(n-1)) [sample], CV = sqrt((n-k)/k).
-    - If k >= n: same formula as OSD floor (frac*(1-frac)/mean).
-    """
-    if num_participating <= 1 or num_pgs <= 0:
-        return 0.0
-    k = num_pgs
-    n = num_participating
-    if k < n:
-        return math.sqrt((n - k) / k)
-    mean = k / n
-    frac = mean - math.floor(mean)
-    min_var = frac * (1.0 - frac)
-    return math.sqrt(min_var) / mean if mean > 0 else 0.0
-
-
 def _osd_cv_floor(mean: float) -> float:
     """Theoretical minimum OSD CV with integer primary counts.
 
@@ -571,9 +551,16 @@ class GreedyOptimizer(OptimizerBase):
                 self.pool_filter = None
         
         # Stall detection: stop when focused fallback churns without progress
-        stall_limit = 20
+        stall_limit = 10
         consecutive_fallback = 0
         best_score_at_fallback_start = float('inf')
+
+        # Global stagnation detection: stop when composite score plateaus
+        # across ALL search paths (not just focused fallback)
+        stagnation_window = 100      # check progress over this many iterations
+        stagnation_threshold = 0.001 # minimum absolute score improvement required
+        score_at_window_start = None
+        stagnation_window_iter = 0
 
         # Phase transition: shift to pool-heavy scoring when OSD hits floor
         osd_cv_window_start = None  # OSD CV at start of current window
@@ -711,16 +698,18 @@ class GreedyOptimizer(OptimizerBase):
                 break
 
             # Stall detection: if focused fallback fires repeatedly without
-            # the composite score actually improving, we're stuck.
+            # meaningful composite improvement, we're stuck.  Use a tight
+            # threshold (not 1e-9) to catch oscillating swaps that bounce
+            # the score by tiny amounts without real progress.
             if used_focused_fallback:
                 if consecutive_fallback == 0:
                     best_score_at_fallback_start = self.scorer.calculate_score(state)
                 consecutive_fallback += 1
                 if consecutive_fallback >= stall_limit:
                     current_score = self.scorer.calculate_score(state)
-                    if current_score >= best_score_at_fallback_start - 1e-9:
+                    if current_score >= best_score_at_fallback_start - 0.0005:
                         if self.verbose:
-                            print(f"Stalled: {stall_limit} consecutive focused-fallback iterations with no composite improvement")
+                            print(f"Stalled: {stall_limit} consecutive focused-fallback iterations with no meaningful improvement")
                         break
                     # Score did improve — reset and keep going
                     consecutive_fallback = 0
@@ -731,12 +720,31 @@ class GreedyOptimizer(OptimizerBase):
             # Apply swap to state
             apply_swap(state, swap)
             swaps.append(swap)
-            
+
             # Update statistics
             self.stats.swaps_evaluated += 1  # In greedy, evaluated = applied
             self.stats.swaps_applied += 1
             self._record_iteration(state)
-            
+
+            # Global stagnation detection: if the composite score hasn't
+            # improved meaningfully over a window of iterations, stop.
+            # This catches the phase-transition oscillation cycle where
+            # different search paths churn without net progress.
+            current_composite = self.scorer.calculate_score(state)
+            if score_at_window_start is None:
+                score_at_window_start = current_composite
+                stagnation_window_iter = iteration
+            elif iteration - stagnation_window_iter >= stagnation_window:
+                improvement = score_at_window_start - current_composite
+                if improvement < stagnation_threshold:
+                    if self.verbose:
+                        print(f"  [stagnation] score improved only {improvement:.6f} "
+                              f"over last {stagnation_window} iterations, stopping")
+                    break
+                # Reset window
+                score_at_window_start = current_composite
+                stagnation_window_iter = iteration
+
             # Print progress every 10 iterations
             if self.verbose and iteration % 10 == 0:
                 self._print_progress(state, iteration, len(swaps))

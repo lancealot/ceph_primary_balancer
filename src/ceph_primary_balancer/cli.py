@@ -552,9 +552,9 @@ def main():
             # PG-weighted average CV across all pools
             from .analyzer import calculate_weighted_avg_pool_cv
             avg_pool_cv = calculate_weighted_avg_pool_cv(state)
-            print(f"Average Pool CV: {avg_pool_cv:.2%}")
+            print(f"Average Pool CV (balanceable): {avg_pool_cv:.2%}")
             print(f"\nPer-Pool Statistics:")
-            
+
             # Sort pools by CV (worst first)
             sorted_pool_stats = sorted(pool_stats.items(), key=lambda x: x[1].cv, reverse=True)
             for pool_id, pool_stat in sorted_pool_stats[:5]:  # Show top 5 pools
@@ -657,8 +657,8 @@ def main():
         if current_pool_stats:
             from .analyzer import calculate_weighted_avg_pool_cv
             avg_pool_cv = calculate_weighted_avg_pool_cv(state)
-            print(f"Average Pool CV: {avg_pool_cv:.2%}")
-            
+            print(f"Average Pool CV (balanceable): {avg_pool_cv:.2%}")
+
             # Show pools with most improvement or focus on filtered pool
             if args.pool is not None and args.pool in current_pool_stats:
                 pool_stat = current_pool_stats[args.pool]

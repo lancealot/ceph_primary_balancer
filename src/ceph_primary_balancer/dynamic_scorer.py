@@ -207,12 +207,18 @@ class DynamicScorer(Scorer):
                 host_stats = calculate_statistics(host_counts)
                 host_cv = host_stats.cv
         
-        # Calculate Pool CV (PG-weighted average across pools)
+        # Calculate Pool CV (PG-weighted average across pools, excluding unbalanceable)
         pool_cv = 0.0
         if state.pools and 'pool' in self.enabled_levels:
+            from .scorer import _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
             weighted_sum = 0.0
             total_w = 0
             for pool_id, pool in state.pools.items():
+                # Skip pools too sparse to balance
+                n_part = len(pool.participating_osds) if pool.participating_osds else len(pool.primary_counts)
+                if _pool_cv_floor(pool.pg_count, n_part) > UNBALANCEABLE_CV_FLOOR:
+                    continue
+
                 pool_pgs = [pg for pg in state.pgs.values() if pg.pool_id == pool_id]
                 if pool_pgs:
                     osd_counts_in_pool: Dict[int, int] = {}
