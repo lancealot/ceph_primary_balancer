@@ -234,10 +234,10 @@ python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
   --output rebalance.sh
 
-# With advanced algorithms
+# With tabu search algorithm
 python3 -m ceph_primary_balancer.cli \
   --from-file export.tar.gz \
-  --algorithm simulated_annealing \
+  --algorithm tabu_search \
   --output rebalance.sh
 ```
 

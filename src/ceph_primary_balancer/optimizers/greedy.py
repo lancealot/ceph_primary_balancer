@@ -16,6 +16,7 @@ Phase 7 Update: Refactored into OptimizerBase architecture while maintaining
 """
 
 from typing import Dict, List, Optional, Set
+import math
 
 from .base import OptimizerBase
 from ..models import ClusterState, OSDInfo, SwapProposal, HostInfo, PoolInfo
@@ -443,6 +444,21 @@ def find_best_focused_swap(
     return best_swap
 
 
+def _osd_cv_floor(mean: float) -> float:
+    """Theoretical minimum OSD CV with integer primary counts.
+
+    With mean primaries/OSD = m, the best integer distribution assigns
+    floor(m) to some OSDs and ceil(m) to others.  The resulting minimum
+    variance is frac*(1-frac) where frac = m - floor(m), giving
+    CV = sqrt(frac*(1-frac)) / m.
+    """
+    if mean <= 0:
+        return 0.0
+    frac = mean - math.floor(mean)
+    min_var = frac * (1.0 - frac)
+    return math.sqrt(min_var) / mean
+
+
 class GreedyOptimizer(OptimizerBase):
     """
     Greedy optimization algorithm for primary PG balancing.
@@ -529,6 +545,14 @@ class GreedyOptimizer(OptimizerBase):
         consecutive_fallback = 0
         best_score_at_fallback_start = float('inf')
 
+        # Phase transition: switch to pool-only scoring when OSD hits floor
+        osd_floor_stall_count = 0
+        osd_floor_stall_limit = 50
+        last_osd_cv = None
+        pool_phase_scorer = None  # created on demand when phase triggers
+        osd_cv_at_phase_switch = None
+        active_scorer = self.scorer  # may change to pool_phase_scorer
+
         # Main optimization loop
         for iteration in range(self.max_iterations):
             # Check termination conditions
@@ -538,6 +562,48 @@ class GreedyOptimizer(OptimizerBase):
                     stats = analyzer.calculate_statistics(primary_counts)
                     print(f"Target OSD-level CV {self.target_cv:.2%} achieved!")
                 break
+
+            # Phase transition: detect OSD CV floor and switch to pool-only
+            if pool_phase_scorer is None and 'pool' in self.scorer.enabled_levels:
+                primary_counts = [osd.primary_count for osd in state.osds.values()]
+                current_osd_cv = analyzer.calculate_statistics(primary_counts).cv
+                osd_mean = sum(primary_counts) / len(primary_counts)
+                floor_cv = _osd_cv_floor(osd_mean)
+
+                if last_osd_cv is not None:
+                    # OSD CV "not improving" = within 0.5% of previous
+                    if current_osd_cv >= last_osd_cv - 0.005:
+                        osd_floor_stall_count += 1
+                    else:
+                        osd_floor_stall_count = 0
+
+                    if (osd_floor_stall_count >= osd_floor_stall_limit
+                            and current_osd_cv < floor_cv * 2.0):
+                        pool_phase_scorer = Scorer(
+                            w_osd=0.0, w_host=0.0, w_pool=1.0,
+                            enabled_levels=['pool'],
+                        )
+                        active_scorer = pool_phase_scorer
+                        osd_cv_at_phase_switch = current_osd_cv
+                        if self.verbose:
+                            print(f"  [phase transition] OSD CV {current_osd_cv:.2%} "
+                                  f"at integer floor ({floor_cv:.2%}), "
+                                  f"switching to pool-only scoring")
+                last_osd_cv = current_osd_cv
+
+            # Guardrail: if pool-phase scoring pushed OSD CV too high, revert
+            if pool_phase_scorer is not None and osd_cv_at_phase_switch is not None:
+                primary_counts_check = [osd.primary_count for osd in state.osds.values()]
+                check_cv = analyzer.calculate_statistics(primary_counts_check).cv
+                osd_mean_check = sum(primary_counts_check) / len(primary_counts_check)
+                guardrail = max(_osd_cv_floor(osd_mean_check) * 3.0, osd_cv_at_phase_switch * 1.5)
+                if check_cv > guardrail:
+                    if self.verbose:
+                        print(f"  [guardrail] OSD CV {check_cv:.2%} exceeded "
+                              f"limit {guardrail:.2%}, reverting to composite scoring")
+                    pool_phase_scorer = None
+                    active_scorer = self.scorer
+                    osd_floor_stall_count = 0
 
             # Identify donors and receivers at OSD level
             donors = analyzer.identify_donors(state.osds)
@@ -563,7 +629,7 @@ class GreedyOptimizer(OptimizerBase):
                 search_state = state
 
             # Find best swap using donor/receiver filtering
-            swap = find_best_swap(search_state, donors, receivers, self.scorer,
+            swap = find_best_swap(search_state, donors, receivers, active_scorer,
                                   pool_donors, pool_receivers)
 
             # If normal threshold found nothing, retry with relaxed threshold
@@ -578,12 +644,12 @@ class GreedyOptimizer(OptimizerBase):
                     state, threshold_pct=0.0
                 )
                 swap = find_best_swap(search_state, relaxed_donors, relaxed_receivers,
-                                      self.scorer, relaxed_pool_d, relaxed_pool_r)
+                                      active_scorer, relaxed_pool_d, relaxed_pool_r)
 
             # Also search for pool-targeted swaps (catches candidates that
             # donor/receiver filtering misses for small/imbalanced pools).
             # Compare with whatever the global search found and pick the best.
-            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
+            pool_swap = find_best_pool_swap(state, active_scorer, self.target_cv)
             if pool_swap is not None:
                 if swap is None or pool_swap.score_improvement > swap.score_improvement:
                     swap = pool_swap
@@ -593,7 +659,7 @@ class GreedyOptimizer(OptimizerBase):
             used_focused_fallback = False
             if swap is None:
                 swap = find_best_focused_swap(
-                    state, self.scorer, self.target_cv,
+                    state, active_scorer, self.target_cv,
                     max_regression=0.001,
                 )
                 if swap is not None:

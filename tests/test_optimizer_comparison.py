@@ -72,7 +72,7 @@ POOLS_CONFIG = [
     {"pgs": 64,  "replication": 11, "imbalance_cv": 0.35, "pattern": "bimodal"},
 ]
 
-ALGORITHMS = ["greedy", "batch_greedy", "tabu_search", "simulated_annealing"]
+ALGORITHMS = ["greedy", "batch_greedy", "tabu_search"]
 
 WEIGHT_CONFIGS = [
     {"name": "static_default", "dynamic_weights": False},
@@ -124,8 +124,6 @@ def run_optimizer(state, algorithm: str, weight_cfg: dict) -> Dict[str, Any]:
         kwargs["batch_size"] = 10
     elif algorithm == "tabu_search":
         kwargs["tabu_tenure"] = 50
-    elif algorithm == "simulated_annealing":
-        kwargs["random_seed"] = SEED
 
     optimizer = OptimizerRegistry.get_optimizer(algorithm, **kwargs)
 

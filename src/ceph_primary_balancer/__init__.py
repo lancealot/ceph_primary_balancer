@@ -18,7 +18,7 @@ Version History:
 - v1.1.0: Phase 5 Complete - Comprehensive benchmark framework
 - v1.2.0: Phase 6.5 Complete - Configurable optimization levels
 - v1.3.0: Dynamic weight optimization with adaptive strategies
-- v1.4.0: Advanced optimization algorithms (Greedy, Batch Greedy, Tabu Search, Simulated Annealing)
+- v1.4.0: Advanced optimization algorithms (Greedy, Batch Greedy, Tabu Search)
 - v1.5.0: Offline mode for air-gapped environments
 
 Production Features (v1.4.0):
@@ -34,7 +34,7 @@ Production Features (v1.4.0):
 ✅ Enhanced reporting (JSON export, markdown reports)
 ✅ Example configurations for common use cases
 ✅ Benchmark framework (performance, quality, scalability testing)
-✅ Advanced optimization algorithms (greedy, batch_greedy, tabu_search, simulated_annealing)
+✅ Advanced optimization algorithms (greedy, batch_greedy, tabu_search)
 ✅ Algorithm registry with dynamic selection
 ✅ Deterministic optimization with configurable parameters
 ✅ Offline mode for air-gapped environments (export/analyze/execute workflow)

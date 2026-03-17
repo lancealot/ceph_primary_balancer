@@ -766,3 +766,44 @@ def test_stall_detection_stops_focused_fallback_churn():
         f"Expected early termination via stall detection, "
         f"but ran {optimizer.stats.iterations} iterations"
     )
+
+
+def test_pool_phase_transition_improves_pool_cv():
+    """After OSD CV hits its integer floor, the optimizer should switch to
+    pool-only scoring and continue improving pool CV."""
+    state = generate_synthetic_cluster(
+        num_osds=60, num_hosts=6, num_pools=15, pgs_per_pool=100,
+        replication_factor=3, imbalance_cv=0.35, seed=42,
+    )
+
+    from ceph_primary_balancer.analyzer import get_pool_statistics_summary
+
+    # Run with pool enabled and a tight target so OSD hits floor
+    optimizer = GreedyOptimizer(
+        target_cv=0.01, max_iterations=1500,
+        enabled_levels=['osd', 'host', 'pool'],
+    )
+    swaps = optimizer.optimize(state)
+
+    pool_stats = get_pool_statistics_summary(state)
+    final_avg_pool_cv = sum(ps.cv for ps in pool_stats.values()) / len(pool_stats)
+
+    # Compare against a run WITHOUT pool in enabled_levels (OSD-only)
+    state2 = generate_synthetic_cluster(
+        num_osds=60, num_hosts=6, num_pools=15, pgs_per_pool=100,
+        replication_factor=3, imbalance_cv=0.35, seed=42,
+    )
+    optimizer2 = GreedyOptimizer(
+        target_cv=0.01, max_iterations=1500,
+        enabled_levels=['osd', 'host'],
+    )
+    optimizer2.optimize(state2)
+
+    pool_stats2 = get_pool_statistics_summary(state2)
+    osd_only_avg_pool_cv = sum(ps.cv for ps in pool_stats2.values()) / len(pool_stats2)
+
+    # Pool-aware optimization should achieve better pool CV
+    assert final_avg_pool_cv < osd_only_avg_pool_cv, (
+        f"Pool-aware ({final_avg_pool_cv:.4f}) should beat "
+        f"OSD-only ({osd_only_avg_pool_cv:.4f}) on pool CV"
+    )
