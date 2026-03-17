@@ -271,12 +271,13 @@ def generate_synthetic_cluster(
             osds[primary_osd].primary_count += 1
             for osd_id in acting:
                 osds[osd_id].total_pg_count += 1
-            
+
             # Update pool tracking
+            pools[pool_id].participating_osds.update(acting)
             if primary_osd not in pools[pool_id].primary_counts:
                 pools[pool_id].primary_counts[primary_osd] = 0
             pools[pool_id].primary_counts[primary_osd] += 1
-            
+
             pg_idx += 1
     
     # Update host counts
@@ -477,8 +478,9 @@ def generate_multi_pool_scenario(
             osds[primary_osd].primary_count += 1
             for osd_id in acting:
                 osds[osd_id].total_pg_count += 1
-            
+
             # Update pool tracking
+            pools[pool_id].participating_osds.update(acting)
             if primary_osd not in pools[pool_id].primary_counts:
                 pools[pool_id].primary_counts[primary_osd] = 0
             pools[pool_id].primary_counts[primary_osd] += 1
@@ -514,14 +516,20 @@ def save_test_dataset(
         metadata: Optional metadata to include
     """
     # Convert dataclasses to dicts
+    pool_dicts = {}
+    for pool_id, pool in state.pools.items():
+        d = asdict(pool)
+        d['participating_osds'] = sorted(d['participating_osds'])  # set -> list for JSON
+        pool_dicts[str(pool_id)] = d
+
     data = {
         'metadata': metadata or {},
         'pgs': {pgid: asdict(pg) for pgid, pg in state.pgs.items()},
         'osds': {str(osd_id): asdict(osd) for osd_id, osd in state.osds.items()},
         'hosts': {hostname: asdict(host) for hostname, host in state.hosts.items()},
-        'pools': {str(pool_id): asdict(pool) for pool_id, pool in state.pools.items()}
+        'pools': pool_dicts,
     }
-    
+
     with open(filepath, 'w') as f:
         json.dump(data, f, indent=2)
 
@@ -555,11 +563,19 @@ def load_test_dataset(filepath: str) -> ClusterState:
         for hostname, host_data in data['hosts'].items()
     }
     
-    pools = {
-        int(pool_id): PoolInfo(**pool_data)
-        for pool_id, pool_data in data['pools'].items()
-    }
-    
+    pools = {}
+    for pool_id, pool_data in data['pools'].items():
+        # Handle legacy exports that don't have participating_osds
+        pool_data.pop('participating_osds', None)
+        pools[int(pool_id)] = PoolInfo(**pool_data)
+
+    # Recompute participating_osds from PGs
+    for pg in pgs.values():
+        if pg.pool_id in pools:
+            pools[pg.pool_id].participating_osds.update(
+                osd_id for osd_id in pg.acting if osd_id in osds
+            )
+
     return ClusterState(
         pgs=pgs,
         osds=osds,

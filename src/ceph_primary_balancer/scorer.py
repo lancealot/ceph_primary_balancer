@@ -221,7 +221,11 @@ class Scorer:
             pool_cvs = []
             if state.pools:
                 for pool in state.pools.values():
-                    counts = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
+                    # Include zeros for participating OSDs without primaries
+                    if pool.participating_osds:
+                        counts = [pool.primary_counts.get(oid, 0) for oid in pool.participating_osds if oid in state.osds]
+                    else:
+                        counts = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
                     if len(counts) > 1:
                         stats = calculate_statistics(counts)
                         pool_cvs.append(stats.cv)
@@ -252,11 +256,21 @@ class Scorer:
 
         if 'pool' in self.enabled_levels and state.pools:
             for pool in state.pools.values():
-                counts = [c for osd_id, c in pool.primary_counts.items() if osd_id in state.osds]
-                n = len(counts)
+                # n must include ALL participating OSDs, not just those with
+                # non-zero primaries.  OSDs with 0 primaries in a pool still
+                # participate (they appear in acting sets) and their zeros
+                # represent real imbalance that must be counted in variance.
+                if pool.participating_osds:
+                    n = len(pool.participating_osds)
+                else:
+                    # Fallback for data without participating_osds populated
+                    n = len([1 for oid in pool.primary_counts if oid in state.osds])
+                # s and ss: zeros contribute nothing, so primary_counts alone
+                # gives the correct sums regardless of how many zeros there are
+                counts_vals = [c for oid, c in pool.primary_counts.items() if oid in state.osds]
+                s = sum(counts_vals)
+                ss = sum(c * c for c in counts_vals)
                 if n > 1:
-                    s = sum(counts)
-                    ss = sum(c * c for c in counts)
                     var = (ss - s * s / n) / (n - 1)
                     mean = s / n
                     components.pool_vars[pool.pool_id] = var
@@ -267,10 +281,10 @@ class Scorer:
                     components.pool_n[pool.pool_id] = n
                 elif n == 1:
                     components.pool_vars[pool.pool_id] = 0.0
-                    components.pool_means[pool.pool_id] = float(counts[0])
+                    components.pool_means[pool.pool_id] = float(s)
                     components.pool_cvs[pool.pool_id] = 0.0
-                    components.pool_sum_sq[pool.pool_id] = counts[0] * counts[0]
-                    components.pool_total[pool.pool_id] = counts[0]
+                    components.pool_sum_sq[pool.pool_id] = ss
+                    components.pool_total[pool.pool_id] = s
                     components.pool_n[pool.pool_id] = 1
             if components.pool_cvs:
                 components.avg_pool_cv = sum(components.pool_cvs.values()) / len(components.pool_cvs)
@@ -337,21 +351,21 @@ class Scorer:
             ss = components.pool_sum_sq.get(pool_id, 0)
             s = components.pool_total.get(pool_id, 0)
             n = components.pool_n.get(pool_id, 0)
-            pool_mean = components.pool_means.get(pool_id, 0.0)
 
             # After swap: old_primary goes a->a-1, new_primary goes b->b+1
             new_ss = ss + 2 * (b - a + 1)
-            new_n = n
-            if a == 1:
-                new_n -= 1
-            if b == 0:
-                new_n += 1
+            # n is fixed: it counts ALL participating OSDs (including those
+            # with 0 primaries).  Acting sets don't change during optimization,
+            # so the set of participating OSDs is constant.  The old code
+            # adjusted n when an OSD crossed the 0↔1 boundary, but that was
+            # wrong — an OSD with 0 primaries is still a participant whose
+            # zero must be counted in variance.
+            pool_mean = components.pool_means.get(pool_id, 0.0)
 
-            if new_n > 1:
-                new_pool_var = (new_ss - s * s / new_n) / (new_n - 1)
-                # Mean changes if n changes (same total, different count)
-                new_pool_mean = s / new_n if new_n > 0 else 0.0
-                new_pool_cv = math.sqrt(max(0.0, new_pool_var)) / new_pool_mean if new_pool_mean > 0 else 0.0
+            if n > 1:
+                new_pool_var = (new_ss - s * s / n) / (n - 1)
+                # Mean is unchanged (same total, same n)
+                new_pool_cv = math.sqrt(max(0.0, new_pool_var)) / pool_mean if pool_mean > 0 else 0.0
             else:
                 new_pool_cv = 0.0
 

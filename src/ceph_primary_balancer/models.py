@@ -62,15 +62,21 @@ class HostInfo:
 class PoolInfo:
     """
     Represents a pool with per-OSD primary distribution.
-    
+
     Pool-level balancing ensures that primary distribution is balanced
     within each pool independently, which is important for workload-specific
     optimization and isolation.
+
+    participating_osds tracks every OSD that appears in any acting set for
+    this pool.  This is critical for correct CV calculation: OSDs with 0
+    primaries in the pool must be included in variance/mean — otherwise
+    the denominator (n) is too small and pool CV is underestimated.
     """
     pool_id: int                                            # Pool identifier
     pool_name: str                                          # Human-readable pool name
     pg_count: int                                           # Total number of PGs in this pool
     primary_counts: Dict[int, int] = field(default_factory=dict)  # osd_id -> primary count for this pool
+    participating_osds: set = field(default_factory=set)    # All OSDs in any acting set for this pool
 
 
 @dataclass

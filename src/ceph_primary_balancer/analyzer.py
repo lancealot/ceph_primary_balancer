@@ -178,25 +178,30 @@ def identify_pool_donors_receivers(
 def calculate_pool_statistics(pool: PoolInfo, osds: Dict[int, OSDInfo]) -> Statistics:
     """
     Calculate statistical metrics for a single pool's primary distribution.
-    
-    Only includes OSDs that have at least one PG from this pool.
-    
+
+    Includes ALL participating OSDs (those appearing in any acting set for
+    this pool), with 0 for OSDs that aren't currently primary.  This gives
+    the correct variance/CV — excluding zeros underestimates imbalance.
+
     Args:
         pool: PoolInfo object containing per-OSD primary counts
         osds: Dictionary of all OSDs in the cluster (for validation)
-        
+
     Returns:
         Statistics object with pool-level metrics
-        
+
     Raises:
-        ValueError: If no OSDs have primaries for this pool
+        ValueError: If no OSDs participate in this pool
     """
-    # Get primary counts only for OSDs that have PGs in this pool
-    counts = [count for osd_id, count in pool.primary_counts.items() if osd_id in osds]
-    
+    if pool.participating_osds:
+        counts = [pool.primary_counts.get(oid, 0) for oid in pool.participating_osds if oid in osds]
+    else:
+        # Fallback for data without participating_osds
+        counts = [count for osd_id, count in pool.primary_counts.items() if osd_id in osds]
+
     if not counts:
-        raise ValueError(f"Pool {pool.pool_name} has no primary assignments")
-    
+        raise ValueError(f"Pool {pool.pool_name} has no participating OSDs")
+
     return calculate_statistics(counts)
 
 
