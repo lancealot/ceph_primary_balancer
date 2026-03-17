@@ -167,6 +167,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         
         # Temperature tracking
         self._current_temperature = initial_temperature
+        self._calibrated_temp = initial_temperature
         self._effective_cooling_rate = cooling_rate
         
         # Best solution tracking
@@ -213,16 +214,16 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         self._start_timer()
         
         # Auto-calibrate temperature from actual score deltas
-        calibrated_temp = self._calibrate_temperature(state)
-        self._current_temperature = calibrated_temp
+        self._calibrated_temp = self._calibrate_temperature(state)
+        self._current_temperature = self._calibrated_temp
 
         # Compute cooling_rate so temperature reaches final_temperature
         # by max_iterations: T_final = T_init * rate^N
         if self.cooling_schedule == 'geometric' and self.max_iterations > 0:
             # Scale final_temperature relative to calibrated start
-            scaled_final = calibrated_temp * (self.final_temperature / self.initial_temperature)
+            scaled_final = self._calibrated_temp * (self.final_temperature / self.initial_temperature)
             scaled_final = max(scaled_final, 1e-12)
-            self._effective_cooling_rate = (scaled_final / calibrated_temp) ** (1.0 / self.max_iterations)
+            self._effective_cooling_rate = (scaled_final / self._calibrated_temp) ** (1.0 / self.max_iterations)
         else:
             self._effective_cooling_rate = self.cooling_rate
 
@@ -233,7 +234,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
 
         if self.verbose:
             print(f"\nStarting Simulated Annealing Optimization")
-            print(f"Initial temperature: {calibrated_temp:.6f} (auto-calibrated)")
+            print(f"Initial temperature: {self._calibrated_temp:.6f} (auto-calibrated)")
             print(f"Cooling: {self.cooling_schedule} (effective rate={self._effective_cooling_rate:.6f})")
             print(f"Reheating: {'enabled' if self.reheating_enabled else 'disabled'}")
             print(f"Random seed: {self.random_seed if self.random_seed is not None else 'None (non-deterministic)'}")
@@ -305,7 +306,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
                 # Cap at calibrated initial temperature
                 self._current_temperature = min(
                     self._current_temperature,
-                    calibrated_temp
+                    self._calibrated_temp
                 )
                 self._iterations_without_improvement = 0
                 self.stats.algorithm_specific['reheats'] += 1
@@ -662,7 +663,7 @@ class SimulatedAnnealingOptimizer(OptimizerBase):
         
         if self.verbose:
             print("\n=== Simulated Annealing Statistics ===")
-            print(f"Initial temperature: {calibrated_temp:.6f} (auto-calibrated)")
+            print(f"Initial temperature: {self._calibrated_temp:.6f} (auto-calibrated)")
             print(f"Final temperature: {self._current_temperature:.6f}")
             print(f"Accepted better moves: {self.stats.algorithm_specific['accepted_better_moves']}")
             print(f"Accepted worse moves: {self.stats.algorithm_specific['accepted_worse_moves']}")
