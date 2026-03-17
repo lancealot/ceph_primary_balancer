@@ -13,6 +13,7 @@ from typing import List, Tuple, Optional, Dict, Any
 from .scorer import Scorer
 from .models import ClusterState
 from .analyzer import calculate_statistics
+from .scorer import _osd_cv_floor
 from .weight_strategies import WeightStrategyFactory, WeightStrategy
 
 
@@ -138,20 +139,38 @@ class DynamicScorer(Scorer):
     def _update_weights(self, state: ClusterState) -> None:
         """
         Update weights based on current cluster state.
-        
+
         Calculates current CV for each dimension and uses the configured
         weight strategy to determine new weights. Updates are tracked in
         history for later analysis.
-        
+
+        When OSD CV is near its theoretical integer floor, the OSD CV
+        passed to the strategy is reduced by the floor amount so the
+        strategy sees only the "improvable gap". This naturally shifts
+        weight to pool/host as OSD approaches its limit.
+
         Args:
             state: Current ClusterState
         """
         # Calculate current CVs
         cvs = self._calculate_current_cvs(state)
-        
+
+        # Floor-aware adjustment: reduce OSD's effective CV by its
+        # integer floor so the weight strategy allocates based on
+        # improvable distance rather than raw CV.
+        effective_cvs = cvs
+        if state.osds and 'osd' in self.enabled_levels:
+            osd_counts = [osd.primary_count for osd in state.osds.values()]
+            if osd_counts:
+                osd_mean = sum(osd_counts) / len(osd_counts)
+                floor_cv = _osd_cv_floor(osd_mean)
+                if floor_cv > 0:
+                    effective_osd = max(0.0, cvs[0] - floor_cv)
+                    effective_cvs = (effective_osd, cvs[1], cvs[2])
+
         # Get new weights from strategy
         new_weights = self.weight_calculator.calculate_weights(
-            cvs,
+            effective_cvs,
             self.target_cv,
             self.cv_history,
             self.weight_history

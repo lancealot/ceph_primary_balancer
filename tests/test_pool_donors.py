@@ -777,9 +777,9 @@ def test_stall_detection_stops_focused_fallback_churn():
     )
 
 
-def test_pool_phase_transition_improves_pool_cv():
-    """After OSD CV hits its integer floor, the optimizer should switch to
-    pool-only scoring and continue improving pool CV."""
+def test_pool_aware_optimization_improves_pool_cv():
+    """Pool-enabled optimization should achieve better pool CV than OSD-only,
+    even after OSD CV converges near its integer floor."""
     state = generate_synthetic_cluster(
         num_osds=60, num_hosts=6, num_pools=15, pgs_per_pool=100,
         replication_factor=3, imbalance_cv=0.35, seed=42,

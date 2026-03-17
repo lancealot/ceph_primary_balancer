@@ -42,6 +42,21 @@ def _pool_cv_floor(num_pgs: int, num_participating: int) -> float:
 UNBALANCEABLE_CV_FLOOR = 0.50
 
 
+def _osd_cv_floor(mean: float) -> float:
+    """Theoretical minimum OSD CV with integer primary counts.
+
+    With mean primaries/OSD = m, the best integer distribution assigns
+    floor(m) to some OSDs and ceil(m) to others.  The resulting minimum
+    variance is frac*(1-frac) where frac = m - floor(m), giving
+    CV = sqrt(frac*(1-frac)) / m.
+    """
+    if mean <= 0:
+        return 0.0
+    frac = mean - math.floor(mean)
+    min_var = frac * (1.0 - frac)
+    return math.sqrt(min_var) / mean
+
+
 @dataclass
 class ScoreComponents:
     """Cached score components for O(1) delta scoring.
