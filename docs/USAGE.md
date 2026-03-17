@@ -234,10 +234,10 @@ python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
   --output rebalance.sh
 
-# With tabu search algorithm
+# With batch greedy algorithm
 python3 -m ceph_primary_balancer.cli \
   --from-file export.tar.gz \
-  --algorithm tabu_search \
+  --algorithm batch_greedy \
   --output rebalance.sh
 ```
 

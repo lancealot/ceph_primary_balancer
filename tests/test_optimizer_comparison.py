@@ -72,7 +72,7 @@ POOLS_CONFIG = [
     {"pgs": 64,  "replication": 11, "imbalance_cv": 0.35, "pattern": "bimodal"},
 ]
 
-ALGORITHMS = ["greedy", "batch_greedy", "tabu_search"]
+ALGORITHMS = ["greedy", "batch_greedy"]
 
 WEIGHT_CONFIGS = [
     {"name": "static_default", "dynamic_weights": False},
@@ -122,8 +122,6 @@ def run_optimizer(state, algorithm: str, weight_cfg: dict) -> Dict[str, Any]:
 
     if algorithm == "batch_greedy":
         kwargs["batch_size"] = 10
-    elif algorithm == "tabu_search":
-        kwargs["tabu_tenure"] = 50
 
     optimizer = OptimizerRegistry.get_optimizer(algorithm, **kwargs)
 
