@@ -16,7 +16,6 @@ from datetime import datetime
 from pathlib import Path
 from . import collector, analyzer, script_generator
 from .optimizers import OptimizerRegistry
-from .optimizers.greedy import apply_swap
 from .scorer import Scorer
 from .exporter import JSONExporter
 from .reporter import Reporter
@@ -209,7 +208,8 @@ def main():
         '--max-changes',
         type=int,
         default=None,
-        help='Maximum number of primary reassignments to apply (default: unlimited). '
+        help='Maximum number of primary reassignments (optimizer iterations). '
+             'Default: config max_iterations (10000). '
              'Useful for testing or limiting cluster impact.'
     )
     parser.add_argument(
@@ -596,10 +596,15 @@ def main():
     # Store original state for reporting (before optimization modifies it)
     original_state = copy.deepcopy(state)
 
+    # Determine max iterations: --max-changes controls the optimizer loop directly
+    # (each iteration = one swap), falling back to config max_iterations
+    max_iterations = args.max_changes if args.max_changes is not None else config.get('optimization.max_iterations', 10000)
+
     print(f"Algorithm: {args.algorithm}")
     optimizer = OptimizerRegistry.get_optimizer(
         args.algorithm,
         target_cv=args.target_cv,
+        max_iterations=max_iterations,
         scorer=scorer,
         pool_filter=args.pool,
         enabled_levels=enabled_levels,
@@ -615,28 +620,6 @@ def main():
         print("\nNo optimization swaps found")
         print("The cluster may already be optimally balanced or no valid swaps exist")
         return
-    
-    # Step 5.5: Apply max-changes limit if specified
-    if args.max_changes is not None and len(swaps) > args.max_changes:
-        print("\n" + "="*60)
-        print("APPLYING SWAP LIMIT")
-        print("="*60)
-        print(f"Optimization found {len(swaps)} beneficial swaps")
-        print(f"Limiting to {args.max_changes} changes (--max-changes={args.max_changes})")
-        print()
-        
-        # Truncate swap list to specified maximum
-        swaps = swaps[:args.max_changes]
-        
-        # Restore state to pre-optimization and re-apply only limited swaps
-        print(f"Recalculating proposed state with {len(swaps)} swaps...")
-        state = copy.deepcopy(original_state)
-        
-        # Re-apply the limited set of swaps
-        for swap in swaps:
-            apply_swap(state, swap)
-        
-        print(f"Proposed state recalculated with {len(swaps)} swaps")
     
     # Step 6: Report proposed changes
     print("\n" + "="*60)
