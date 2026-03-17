@@ -204,12 +204,10 @@ class OptimizerBase(ABC):
                 return False
 
         if 'pool' in enabled and state.pools:
-            from ..analyzer import get_pool_statistics_summary
-            pool_stats = get_pool_statistics_summary(state)
-            if pool_stats:
-                avg_cv = sum(ps.cv for ps in pool_stats.values()) / len(pool_stats)
-                if avg_cv > self.target_cv:
-                    return False
+            from ..analyzer import calculate_weighted_avg_pool_cv
+            avg_cv = calculate_weighted_avg_pool_cv(state)
+            if avg_cv > self.target_cv:
+                return False
 
         return True
     
@@ -244,8 +242,8 @@ class OptimizerBase(ABC):
         if not self.verbose:
             return
         
-        from ..analyzer import calculate_statistics, get_pool_statistics_summary
-        
+        from ..analyzer import calculate_statistics
+
         # Calculate OSD-level CV
         primary_counts = [osd.primary_count for osd in state.osds.values()]
         osd_stats = calculate_statistics(primary_counts)
@@ -258,12 +256,11 @@ class OptimizerBase(ABC):
             host_stats = calculate_statistics(host_counts)
             msg += f", Host CV = {host_stats.cv:.2%}"
         
-        # Add pool-level CV if available
+        # Add pool-level CV if available (PG-weighted average)
         if state.pools:
-            pool_stats = get_pool_statistics_summary(state)
-            if pool_stats:
-                avg_pool_cv = sum(ps.cv for ps in pool_stats.values()) / len(pool_stats)
-                msg += f", Pool CV = {avg_pool_cv:.2%}"
+            from ..analyzer import calculate_weighted_avg_pool_cv
+            avg_pool_cv = calculate_weighted_avg_pool_cv(state)
+            msg += f", Pool CV = {avg_pool_cv:.2%}"
         
         msg += f", Swaps = {total_swaps}"
         print(msg)

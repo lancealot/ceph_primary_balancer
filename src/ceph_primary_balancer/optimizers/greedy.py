@@ -112,7 +112,8 @@ def simulate_swap_score(state: ClusterState, pgid: str, new_primary: int, scorer
                 pool_id=pool.pool_id,
                 pool_name=pool.pool_name,
                 pg_count=pool.pg_count,
-                primary_counts=pool.primary_counts.copy()  # Copy dict
+                primary_counts=pool.primary_counts.copy(),  # Copy dict
+                participating_osds=pool.participating_osds,  # Immutable during scoring
             )
         
         # Update the affected pool's primary counts
@@ -328,6 +329,15 @@ def find_best_pool_swap(
         if pool_cv <= target_cv:
             continue
 
+        # Skip pools already near their theoretical minimum CV —
+        # no swap can meaningfully improve them further.
+        pool = state.pools.get(pool_id)
+        if pool is not None:
+            n_part = len(pool.participating_osds) if pool.participating_osds else components.pool_n.get(pool_id, 0)
+            floor_cv = _pool_cv_floor(pool.pg_count, n_part)
+            if floor_cv > 0 and pool_cv <= floor_cv * 1.10:
+                continue
+
         for pg in pool_pgs.get(pool_id, []):
             for candidate_osd in pg.acting[1:]:
                 new_score = scorer.calculate_swap_delta(
@@ -442,6 +452,26 @@ def find_best_focused_swap(
                 )
 
     return best_swap
+
+
+def _pool_cv_floor(num_pgs: int, num_participating: int) -> float:
+    """Theoretical minimum pool CV given integer primary constraints.
+
+    With k PGs and n participating OSDs:
+    - If k < n: best case is k OSDs with 1 primary, (n-k) with 0.
+      mean = k/n, var = k(n-k)/(n²(n-1)) [sample], CV = sqrt((n-k)/k).
+    - If k >= n: same formula as OSD floor (frac*(1-frac)/mean).
+    """
+    if num_participating <= 1 or num_pgs <= 0:
+        return 0.0
+    k = num_pgs
+    n = num_participating
+    if k < n:
+        return math.sqrt((n - k) / k)
+    mean = k / n
+    frac = mean - math.floor(mean)
+    min_var = frac * (1.0 - frac)
+    return math.sqrt(min_var) / mean if mean > 0 else 0.0
 
 
 def _osd_cv_floor(mean: float) -> float:

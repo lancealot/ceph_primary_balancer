@@ -207,24 +207,26 @@ class DynamicScorer(Scorer):
                 host_stats = calculate_statistics(host_counts)
                 host_cv = host_stats.cv
         
-        # Calculate Pool CV (average across pools)
+        # Calculate Pool CV (PG-weighted average across pools)
         pool_cv = 0.0
         if state.pools and 'pool' in self.enabled_levels:
-            pool_cvs = []
-            for pool_id in state.pools:
+            weighted_sum = 0.0
+            total_w = 0
+            for pool_id, pool in state.pools.items():
                 pool_pgs = [pg for pg in state.pgs.values() if pg.pool_id == pool_id]
                 if pool_pgs:
-                    # Get primary counts per OSD for this pool
                     osd_counts_in_pool: Dict[int, int] = {}
                     for pg in pool_pgs:
                         osd_counts_in_pool[pg.primary] = osd_counts_in_pool.get(pg.primary, 0) + 1
-                    
+
                     if osd_counts_in_pool:
                         pool_stats = calculate_statistics(list(osd_counts_in_pool.values()))
-                        pool_cvs.append(pool_stats.cv)
-            
-            if pool_cvs:
-                pool_cv = sum(pool_cvs) / len(pool_cvs)
+                        w = max(pool.pg_count, 1)
+                        weighted_sum += pool_stats.cv * w
+                        total_w += w
+
+            if total_w > 0:
+                pool_cv = weighted_sum / total_w
         
         cvs = (osd_cv, host_cv, pool_cv)
         

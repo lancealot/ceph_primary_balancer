@@ -184,26 +184,30 @@ def analyze_balance_quality(
         host_cv_after = 0.0
         host_cv_improvement = 0.0
     
-    # Pool-level analysis
+    # Pool-level analysis (PG-weighted average)
     if original_state.pools:
-        pool_cvs_before = []
-        pool_cvs_after = []
-        
+        weighted_before = 0.0
+        weighted_after = 0.0
+        total_w = 0
+
         for pool_id in original_state.pools:
+            w = max(original_state.pools[pool_id].pg_count, 1)
             # Before
             pool_counts_before = list(original_state.pools[pool_id].primary_counts.values())
             if pool_counts_before:
                 pool_stats_before = calculate_statistics(pool_counts_before)
-                pool_cvs_before.append(pool_stats_before.cv)
-            
+                weighted_before += pool_stats_before.cv * w
+
             # After
             pool_counts_after = list(optimized_state.pools[pool_id].primary_counts.values())
             if pool_counts_after:
                 pool_stats_after = calculate_statistics(pool_counts_after)
-                pool_cvs_after.append(pool_stats_after.cv)
-        
-        avg_pool_cv_before = statistics.mean(pool_cvs_before) if pool_cvs_before else 0.0
-        avg_pool_cv_after = statistics.mean(pool_cvs_after) if pool_cvs_after else 0.0
+                weighted_after += pool_stats_after.cv * w
+
+            total_w += w
+
+        avg_pool_cv_before = weighted_before / total_w if total_w > 0 else 0.0
+        avg_pool_cv_after = weighted_after / total_w if total_w > 0 else 0.0
         pool_cv_improvement = ((avg_pool_cv_before - avg_pool_cv_after) / avg_pool_cv_before * 100) if avg_pool_cv_before > 0 else 0
     else:
         avg_pool_cv_before = 0.0
