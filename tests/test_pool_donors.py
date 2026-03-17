@@ -749,11 +749,13 @@ def test_stall_detection_stops_focused_fallback_churn():
 
     Without stall detection, the optimizer burns through remaining iterations
     applying swaps that worsen composite score without improving any dimension.
+
+    Uses a small cluster where the integer constraint floor is high (few PGs
+    per OSD per pool), causing the optimizer to exhaust productive swaps and
+    enter focused fallback territory quickly.
     """
-    # Use a cluster shape where the optimizer will converge most dimensions
-    # but hit a wall on pool CV, triggering repeated focused fallback
     state = generate_synthetic_cluster(
-        num_osds=60, num_hosts=6, num_pools=15, pgs_per_pool=100,
+        num_osds=20, num_hosts=4, num_pools=10, pgs_per_pool=30,
         replication_factor=3, imbalance_cv=0.35, seed=77,
     )
 

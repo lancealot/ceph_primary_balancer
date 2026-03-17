@@ -218,6 +218,9 @@ def load_from_export_files(export_dir: str) -> ClusterState:
         pool_id = pg_info.pool_id
         if pool_id in pools:
             pools[pool_id].pg_count += 1
+            pools[pool_id].participating_osds.update(
+                osd_id for osd_id in pg_info.acting if osd_id in osds
+            )
             if primary_osd not in pools[pool_id].primary_counts:
                 pools[pool_id].primary_counts[primary_osd] = 0
             pools[pool_id].primary_counts[primary_osd] += 1

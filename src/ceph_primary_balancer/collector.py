@@ -290,7 +290,12 @@ def build_cluster_state(from_file: Optional[str] = None) -> ClusterState:
             if pool_id in pools:
                 # Increment PG count for this pool
                 pools[pool_id].pg_count += 1
-                
+
+                # Track all OSDs in acting set as participating in this pool
+                pools[pool_id].participating_osds.update(
+                    osd_id for osd_id in pg_info.acting if osd_id in osds
+                )
+
                 # Track primary count per OSD for this pool
                 if primary_osd not in pools[pool_id].primary_counts:
                     pools[pool_id].primary_counts[primary_osd] = 0
