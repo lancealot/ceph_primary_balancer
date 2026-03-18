@@ -401,6 +401,10 @@ def main():
     
     if args.dynamic_strategy == 'target_distance':  # Default value
         args.dynamic_strategy = config.get('optimization.dynamic_strategy', 'target_distance')
+
+    # If user explicitly chose a strategy, enable dynamic weights automatically
+    if args.dynamic_strategy != 'target_distance' and not args.dynamic_weights:
+        args.dynamic_weights = True
     
     if args.weight_update_interval == 10:  # Default value
         args.weight_update_interval = config.get('optimization.weight_update_interval', 10)
