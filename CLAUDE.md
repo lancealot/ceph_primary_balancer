@@ -141,12 +141,29 @@ Multi-pool 60 OSD / 20            782  19.8s  0.301 → 0.007  0.105 → 0.001  
 ```
 All three dimensions improve simultaneously. Multi-dimension termination + per-pool search dramatically improved pool convergence (e.g., Multi-pool Pool CV: 0.377 → 0.190). Runtime increased for Large scenario due to more iterations; `max_iterations` caps this in production.
 
-### Phase 4: Two-phase weight strategy for pool convergence
+### Phase 4: Pool CV convergence
+Pool CV remains the hardest dimension to converge. OSD and host reach floor quickly, but pool CV stalls well above target — especially for sparse clusters (many OSDs, few PGs per pool). Three complementary improvements, each independently valuable:
+
+#### 4a. Two-phase weight strategy
 The `target_distance` dynamic strategy transitions weight toward pool too gradually — OSD/host are near their floor but still consuming 30%+ of weight. A hard cutover after OSD/host converge lets the optimizer spend its remaining iteration budget on pool CV.
 
 1. Add `TwoPhaseWeightStrategy` to `weight_strategies.py` — hard switch from OSD/host-focused weights `(0.55, 0.35, 0.10)` to pool-focused weights `(0.10, 0.05, 0.85)` when OSD and host CV both drop below `phase1_threshold` (default: `2x target_cv`). Register in `WeightStrategyFactory`.
 2. Add `TestTwoPhaseWeightStrategy` to `test_weight_strategies.py` — phase 1 behavior, phase 2 behavior, transition boundary, edge cases.
 3. Validate with benchmarks — compare `target_distance` vs `two_phase` on existing scenarios. Key metric: final pool CV at same iteration budget. No CLI changes needed (`--dynamic-strategy two_phase` works via factory).
+
+#### 4b. Per-pool candidate search improvements
+The per-pool search in `find_best_pool_swap()` skips pools within 10% of their CV floor — too conservative for pools that still have viable swaps. The `pool_pgs` index is also rebuilt every iteration.
+
+1. Relax the CV floor margin — use a tighter margin (e.g., 2% or absolute delta) so pools close to but not at floor are still searched.
+2. Cache the `pool_pgs` index across iterations, invalidating only when a swap changes pool membership.
+3. Benchmark impact on sparse scenarios (840 OSD / 30 pool).
+
+#### 4c. Adaptive donor/receiver thresholds for small pools
+The fixed 10% donor/receiver threshold in `identify_pool_donors_receivers()` fails for small pools. With 5 primaries/OSD average, the threshold is 5.5 — almost no OSDs qualify as donors, starving the global search of pool-improving candidates.
+
+1. Use pool-size-adaptive thresholds: for pools with mean < 10 primaries/OSD, use absolute threshold (±1) instead of percentage.
+2. Add tests for small-pool donor/receiver identification.
+3. Benchmark impact on multi-pool scenarios.
 
 ## Code Style
 
