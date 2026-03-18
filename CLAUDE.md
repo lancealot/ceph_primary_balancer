@@ -141,6 +141,13 @@ Multi-pool 60 OSD / 20            782  19.8s  0.301 → 0.007  0.105 → 0.001  
 ```
 All three dimensions improve simultaneously. Multi-dimension termination + per-pool search dramatically improved pool convergence (e.g., Multi-pool Pool CV: 0.377 → 0.190). Runtime increased for Large scenario due to more iterations; `max_iterations` caps this in production.
 
+### Phase 4: Two-phase weight strategy for pool convergence
+The `target_distance` dynamic strategy transitions weight toward pool too gradually — OSD/host are near their floor but still consuming 30%+ of weight. A hard cutover after OSD/host converge lets the optimizer spend its remaining iteration budget on pool CV.
+
+1. Add `TwoPhaseWeightStrategy` to `weight_strategies.py` — hard switch from OSD/host-focused weights `(0.55, 0.35, 0.10)` to pool-focused weights `(0.10, 0.05, 0.85)` when OSD and host CV both drop below `phase1_threshold` (default: `2x target_cv`). Register in `WeightStrategyFactory`.
+2. Add `TestTwoPhaseWeightStrategy` to `test_weight_strategies.py` — phase 1 behavior, phase 2 behavior, transition boundary, edge cases.
+3. Validate with benchmarks — compare `target_distance` vs `two_phase` on existing scenarios. Key metric: final pool CV at same iteration budget. No CLI changes needed (`--dynamic-strategy two_phase` works via factory).
+
 ## Code Style
 
 - No docstrings on obvious functions. Reserve docstrings for non-obvious behavior.
