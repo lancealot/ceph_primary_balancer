@@ -155,8 +155,18 @@ def identify_pool_donors_receivers(
         if mean == 0:
             continue
 
-        hi = mean * (1 + threshold_pct)
-        lo = mean * (1 - threshold_pct)
+        # For small-but-not-ultra-sparse pools (1 <= mean < 10), percentage
+        # thresholds create a dead zone. E.g., mean=5 with 10% threshold →
+        # hi=5.5, so only OSDs with 6+ qualify. Use absolute ±1 instead.
+        # For ultra-sparse pools (mean < 1), percentage thresholds work
+        # fine because the fractional lo (e.g., 0.486) correctly identifies
+        # OSDs with 0 primaries as receivers.
+        if 1 <= mean < 10:
+            hi = mean + 1
+            lo = mean - 1
+        else:
+            hi = mean * (1 + threshold_pct)
+            lo = mean * (1 - threshold_pct)
 
         donors = set()
         receivers = set()
