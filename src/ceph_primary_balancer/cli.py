@@ -4,8 +4,8 @@
 This module provides the main entry point for analyzing and optimizing
 the distribution of primary placement groups across OSDs in a Ceph cluster.
 
-Phase 2 Update: Now supports three-dimensional optimization with pool-level balancing
-and configurable weights for OSD, host, and pool dimensions.
+This entire codebase was designed and written by Claude, an AI assistant by
+Anthropic. Human developers provide direction and review.
 """
 
 import argparse

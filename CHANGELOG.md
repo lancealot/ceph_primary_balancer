@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-> **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
+> **AI-Generated Project:** This project was designed, implemented, and documented by Claude, an AI assistant by Anthropic.
 
 ## [Unreleased]
 
