@@ -294,6 +294,7 @@ def find_best_pool_swap(
     state: ClusterState,
     scorer: Scorer,
     target_cv: float,
+    pool_pgs: Optional[Dict[int, list]] = None,
 ) -> Optional[SwapProposal]:
     """Find the best swap targeting pools with CV above target.
 
@@ -306,6 +307,9 @@ def find_best_pool_swap(
         state: Current ClusterState
         scorer: Scorer instance for composite scoring
         target_cv: Target CV — only pools above this are searched
+        pool_pgs: Pre-built index of pool_id -> list of PGs. If None, built
+                  on the fly. Callers in tight loops should pass a cached index
+                  since pool membership doesn't change across swaps.
 
     Returns:
         SwapProposal with best improvement, or None if no beneficial swaps found
@@ -316,10 +320,13 @@ def find_best_pool_swap(
     components = scorer.calculate_score_with_components(state)
     current_score = components.total
 
-    # Index PGs by pool
-    pool_pgs: Dict[int, list] = {}
-    for pg in state.pgs.values():
-        pool_pgs.setdefault(pg.pool_id, []).append(pg)
+    # Use pre-built index if provided, otherwise build on the fly
+    if pool_pgs is None:
+        pool_pgs_idx: Dict[int, list] = {}
+        for pg in state.pgs.values():
+            pool_pgs_idx.setdefault(pg.pool_id, []).append(pg)
+    else:
+        pool_pgs_idx = pool_pgs
 
     best_swap = None
     best_improvement = 0.0
@@ -330,14 +337,16 @@ def find_best_pool_swap(
 
         # Skip pools already near their theoretical minimum CV —
         # no swap can meaningfully improve them further.
+        # Use a tight 2% margin so pools close to (but not at) floor
+        # are still searched for viable swaps.
         pool = state.pools.get(pool_id)
         if pool is not None:
             n_part = len(pool.participating_osds) if pool.participating_osds else components.pool_n.get(pool_id, 0)
             floor_cv = _pool_cv_floor(pool.pg_count, n_part)
-            if floor_cv > 0 and pool_cv <= floor_cv * 1.10:
+            if floor_cv > 0 and pool_cv <= floor_cv * 1.02:
                 continue
 
-        for pg in pool_pgs.get(pool_id, []):
+        for pg in pool_pgs_idx.get(pool_id, []):
             for candidate_osd in pg.acting[1:]:
                 new_score = scorer.calculate_swap_delta(
                     state, components, pg.primary, candidate_osd, pool_id
@@ -550,6 +559,13 @@ class GreedyOptimizer(OptimizerBase):
         stagnation_cv_at_window_start: Optional[float] = None
         stagnation_window_iter = 0
 
+        # Pre-build pool_pgs index once — pool membership never changes
+        # across swaps (swaps only change which OSD is primary, not which
+        # pool a PG belongs to), so this is safe to cache for the entire run.
+        pool_pgs_cache: Dict[int, list] = {}
+        for pg in state.pgs.values():
+            pool_pgs_cache.setdefault(pg.pool_id, []).append(pg)
+
         # Main optimization loop
         for iteration in range(self.max_iterations):
             # Check termination conditions
@@ -604,7 +620,7 @@ class GreedyOptimizer(OptimizerBase):
             # Also search for pool-targeted swaps (catches candidates that
             # donor/receiver filtering misses for small/imbalanced pools).
             # Compare with whatever the global search found and pick the best.
-            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv)
+            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv, pool_pgs=pool_pgs_cache)
             if pool_swap is not None:
                 if swap is None or pool_swap.score_improvement > swap.score_improvement:
                     swap = pool_swap

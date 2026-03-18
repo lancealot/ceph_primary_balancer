@@ -628,6 +628,140 @@ def test_pool_donors_receivers_independent():
         assert len(pool_receivers[2]) > 0
 
 
+def test_adaptive_threshold_small_pool_uses_absolute():
+    """For small pools (mean < 10), adaptive thresholds use ±1 absolute
+    instead of percentage, yielding more donors/receivers."""
+    # 20 OSDs participating in a small pool, mean = 5 primaries/OSD
+    osds = {i: OSDInfo(osd_id=i, primary_count=5, total_pg_count=20) for i in range(20)}
+    # Pool with 100 PGs: 5 primaries/OSD average
+    # Some OSDs at 6 (donors), some at 4 (receivers), rest at 5
+    primary_counts = {}
+    for i in range(20):
+        if i < 5:
+            primary_counts[i] = 6   # above mean+1? No, 6 > 6? No. 6 > mean+1=6? No (strict >)
+        elif i < 10:
+            primary_counts[i] = 4   # below mean-1=4? No (strict <)
+        else:
+            primary_counts[i] = 5
+
+    # Adjust to make some clearly above/below: mean=5, threshold ±1 → hi=6, lo=4
+    # Need counts > 6 and < 4 for strict inequality
+    primary_counts[0] = 8   # clearly a donor (8 > 6)
+    primary_counts[1] = 7   # donor (7 > 6)
+    primary_counts[18] = 3  # receiver (3 < 4)
+    primary_counts[19] = 2  # receiver (2 < 4)
+
+    pools = {
+        1: PoolInfo(pool_id=1, pool_name='small_pool', pg_count=100,
+                    primary_counts=primary_counts),
+    }
+    pgs = {}
+    pg_idx = 0
+    for osd_id, count in primary_counts.items():
+        for _ in range(count):
+            others = [(osd_id + 1) % 20, (osd_id + 2) % 20]
+            pgs[f'1.{pg_idx}'] = PGInfo(pgid=f'1.{pg_idx}', pool_id=1,
+                                         acting=[osd_id, others[0], others[1]])
+            pg_idx += 1
+
+    state = ClusterState(pgs=pgs, osds=osds, pools=pools)
+
+    # With old 10% threshold: mean=5, hi=5.5, lo=4.5
+    # Donors: OSDs with count > 5.5 → {0(8), 1(7), 2(6), 3(6), 4(6)} = 5 donors
+    # Receivers: OSDs with count < 4.5 → {18(3), 19(2)} = 2 receivers
+    #
+    # With adaptive ±1: mean=5, hi=6, lo=4
+    # Donors: count > 6 → {0(8), 1(7)} = 2 donors
+    # Receivers: count < 4 → {18(3), 19(2)} = 2 receivers
+    #
+    # The key difference: adaptive threshold is more precise for small pools,
+    # not wasting time on OSDs that are only 1 above mean (count=6 when mean=5).
+    pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+    assert 1 in pool_donors
+    assert 1 in pool_receivers
+    # OSDs with 8 and 7 primaries should be donors (> mean+1=6)
+    assert 0 in pool_donors[1]
+    assert 1 in pool_donors[1]
+    # OSDs with 3 and 2 primaries should be receivers (< mean-1=4)
+    assert 18 in pool_receivers[1]
+    assert 19 in pool_receivers[1]
+
+
+def test_adaptive_threshold_large_pool_uses_percentage():
+    """For pools with mean >= 10, the original percentage threshold applies."""
+    osds = {i: OSDInfo(osd_id=i, primary_count=20, total_pg_count=40) for i in range(10)}
+    # Pool with mean = 20 primaries/OSD — well above the mean < 10 cutoff
+    primary_counts = {i: 20 for i in range(10)}
+    primary_counts[0] = 25  # 25% above mean → donor with 10% threshold
+    primary_counts[9] = 15  # 25% below mean → receiver with 10% threshold
+
+    pools = {
+        1: PoolInfo(pool_id=1, pool_name='large_pool', pg_count=200,
+                    primary_counts=primary_counts),
+    }
+    pgs = {}
+    pg_idx = 0
+    for osd_id, count in primary_counts.items():
+        for _ in range(count):
+            others = [(osd_id + 1) % 10, (osd_id + 2) % 10]
+            pgs[f'1.{pg_idx}'] = PGInfo(pgid=f'1.{pg_idx}', pool_id=1,
+                                         acting=[osd_id, others[0], others[1]])
+            pg_idx += 1
+
+    state = ClusterState(pgs=pgs, osds=osds, pools=pools)
+    pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+    # mean = 200/10 = 20, 10% threshold: hi=22, lo=18
+    # OSD 0 (25) is a donor, OSD 9 (15) is a receiver
+    assert 1 in pool_donors
+    assert 0 in pool_donors[1]
+    assert 1 in pool_receivers
+    assert 9 in pool_receivers[1]
+
+
+def test_adaptive_threshold_no_donors_with_old_pct():
+    """Verify that adaptive thresholds find donors where percentage would not.
+
+    With mean=2 and 10% threshold, hi=2.2 — an OSD with 3 primaries barely
+    qualifies. With adaptive ±1, hi=3, so count must be > 3. But the real
+    benefit is the receiver side: lo=1.8 (pct) vs lo=1 (adaptive), and OSDs
+    with 0 primaries are receivers in both cases.
+    """
+    osds = {i: OSDInfo(osd_id=i, primary_count=2, total_pg_count=10) for i in range(50)}
+    # Sparse pool: 100 PGs across 50 OSDs → mean = 2
+    primary_counts = {i: 2 for i in range(50)}
+    primary_counts[0] = 5   # heavy donor
+    primary_counts[1] = 4   # donor
+    primary_counts[48] = 0  # receiver
+    primary_counts[49] = 0  # receiver
+
+    pools = {
+        1: PoolInfo(pool_id=1, pool_name='sparse', pg_count=100,
+                    primary_counts=primary_counts),
+    }
+    pgs = {}
+    pg_idx = 0
+    for osd_id, count in primary_counts.items():
+        for _ in range(count):
+            others = [(osd_id + 1) % 50, (osd_id + 2) % 50]
+            pgs[f'1.{pg_idx}'] = PGInfo(pgid=f'1.{pg_idx}', pool_id=1,
+                                         acting=[osd_id, others[0], others[1]])
+            pg_idx += 1
+
+    state = ClusterState(pgs=pgs, osds=osds, pools=pools)
+    pool_donors, pool_receivers = identify_pool_donors_receivers(state)
+
+    assert 1 in pool_donors
+    # mean=2, adaptive hi=3 → OSDs with count > 3: {0(5), 1(4)}
+    assert 0 in pool_donors[1]
+    assert 1 in pool_donors[1]
+    assert 1 in pool_receivers
+    # mean=2, adaptive lo=1 → OSDs with count < 1: {48(0), 49(0)}
+    assert 48 in pool_receivers[1]
+    assert 49 in pool_receivers[1]
+
+
 def _make_composite_local_minimum_cluster():
     """Cluster where composite scoring is stuck but individual dimensions can improve.
 
