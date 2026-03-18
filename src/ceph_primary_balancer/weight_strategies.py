@@ -548,6 +548,58 @@ class AdaptiveHybridWeightStrategy(WeightStrategy):
         return tuple(adjusted)
 
 
+class TwoPhaseWeightStrategy(WeightStrategy):
+    """
+    Two-phase strategy: target_distance in phase 1, hard switch to
+    pool-focused weights once OSD and host converge.
+
+    Phase 1 delegates to ``TargetDistanceWeightStrategy`` so all three
+    dimensions get proportional-to-distance weight — this is the proven
+    approach for initial convergence.
+
+    Phase 2 kicks in when OSD and host CV both drop below
+    ``phase1_threshold`` (default: 2× target_cv).  Weights jump to
+    ``phase2_weights`` so the remaining iteration budget targets pool CV,
+    the hardest dimension.
+
+    The hard switch is the key difference from pure target_distance:
+    target_distance keeps OSD/host at ~30%+ weight even when they're
+    at floor, stealing budget from pool convergence.
+    """
+
+    def __init__(
+        self,
+        phase1_threshold: float = 0.0,
+        phase2_weights: Tuple[float, float, float] = (0.10, 0.05, 0.85),
+        min_weight: float = 0.05,
+    ):
+        if phase1_threshold < 0:
+            raise ValueError(f"phase1_threshold must be >= 0, got {phase1_threshold}")
+        if len(phase2_weights) != 3 or any(v < 0 for v in phase2_weights) or abs(sum(phase2_weights) - 1.0) > 0.001:
+            raise ValueError(f"phase2_weights must be 3 non-negative values summing to 1.0, got {phase2_weights}")
+        self.phase1_threshold = phase1_threshold
+        self.phase2_weights = phase2_weights
+        self._phase1 = TargetDistanceWeightStrategy(min_weight=min_weight)
+
+    @property
+    def name(self) -> str:
+        return "two_phase"
+
+    def calculate_weights(
+        self,
+        cvs: Tuple[float, float, float],
+        target_cv: float,
+        cv_history: List[Tuple[float, float, float]],
+        weight_history: List[Tuple[float, float, float]],
+    ) -> Tuple[float, float, float]:
+        osd_cv, host_cv, pool_cv = cvs
+        threshold = self.phase1_threshold if self.phase1_threshold > 0 else 2.0 * target_cv
+
+        if osd_cv <= threshold and host_cv <= threshold:
+            return self.phase2_weights
+        return self._phase1.calculate_weights(cvs, target_cv, cv_history, weight_history)
+
+
 class WeightStrategyFactory:
     """
     Factory for creating weight strategies.
@@ -560,6 +612,7 @@ class WeightStrategyFactory:
         'proportional': ProportionalWeightStrategy,
         'target_distance': TargetDistanceWeightStrategy,
         'adaptive_hybrid': AdaptiveHybridWeightStrategy,
+        'two_phase': TwoPhaseWeightStrategy,
     }
     
     @classmethod

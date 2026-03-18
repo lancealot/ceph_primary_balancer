@@ -16,6 +16,7 @@ from ceph_primary_balancer.weight_strategies import (
     ProportionalWeightStrategy,
     TargetDistanceWeightStrategy,
     AdaptiveHybridWeightStrategy,
+    TwoPhaseWeightStrategy,
     WeightStrategyFactory,
     CVState
 )
@@ -271,7 +272,8 @@ class TestWeightStrategyFactory:
         assert 'proportional' in strategies
         assert 'target_distance' in strategies
         assert 'adaptive_hybrid' in strategies
-        assert len(strategies) == 3
+        assert 'two_phase' in strategies
+        assert len(strategies) == 4
         # Should be sorted
         assert strategies == sorted(strategies)
     
@@ -796,8 +798,125 @@ class TestWeightStrategyFactoryExtended:
     def test_list_strategies_includes_adaptive_hybrid(self):
         """Test that adaptive_hybrid is in the strategy list."""
         strategies = WeightStrategyFactory.list_strategies()
-        
+
         assert 'adaptive_hybrid' in strategies
         assert 'proportional' in strategies
         assert 'target_distance' in strategies
-        assert len(strategies) == 3
+        assert 'two_phase' in strategies
+        assert len(strategies) == 4
+
+
+class TestTwoPhaseWeightStrategy:
+    """Test two-phase weight strategy for pool CV convergence."""
+
+    def test_phase1_delegates_to_target_distance(self):
+        """Phase 1 uses target_distance weighting, not fixed weights."""
+        strategy = TwoPhaseWeightStrategy()
+        td = TargetDistanceWeightStrategy(min_weight=0.05)
+        cvs = (0.15, 0.03, 0.30)
+        # OSD above threshold (0.10) → phase 1 → target_distance
+        w = strategy.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
+        expected = td.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
+        assert w == expected
+
+    def test_phase1_when_host_above_threshold(self):
+        """Host still above threshold → phase 1 (target_distance)."""
+        strategy = TwoPhaseWeightStrategy()
+        td = TargetDistanceWeightStrategy(min_weight=0.05)
+        cvs = (0.03, 0.15, 0.30)
+        w = strategy.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
+        expected = td.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
+        assert w == expected
+
+    def test_phase2_when_both_below_threshold(self):
+        """OSD and host both below threshold → phase 2 weights."""
+        strategy = TwoPhaseWeightStrategy()
+        weights = strategy.calculate_weights(
+            cvs=(0.08, 0.06, 0.30), target_cv=0.05, cv_history=[], weight_history=[]
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+    def test_phase2_at_exact_threshold(self):
+        """OSD and host exactly at threshold → phase 2 (≤ check)."""
+        strategy = TwoPhaseWeightStrategy()
+        weights = strategy.calculate_weights(
+            cvs=(0.10, 0.10, 0.30), target_cv=0.05, cv_history=[], weight_history=[]
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+    def test_default_threshold_scales_with_target(self):
+        """Default threshold is 2× target_cv."""
+        strategy = TwoPhaseWeightStrategy()
+        # target_cv=0.10 → threshold = 0.20
+        # OSD=0.15, Host=0.15 → both below 0.20 → phase 2
+        weights = strategy.calculate_weights(
+            cvs=(0.15, 0.15, 0.40), target_cv=0.10, cv_history=[], weight_history=[]
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+    def test_explicit_threshold_overrides_default(self):
+        """Explicit phase1_threshold overrides 2× target_cv."""
+        strategy = TwoPhaseWeightStrategy(phase1_threshold=0.30)
+        weights = strategy.calculate_weights(
+            cvs=(0.25, 0.20, 0.40), target_cv=0.05, cv_history=[], weight_history=[]
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+    def test_custom_phase2_weights(self):
+        """Custom phase 2 weights are used correctly."""
+        strategy = TwoPhaseWeightStrategy(phase2_weights=(0.05, 0.05, 0.90))
+        w = strategy.calculate_weights(
+            cvs=(0.05, 0.05, 0.40), target_cv=0.05, cv_history=[], weight_history=[]
+        )
+        assert w == (0.05, 0.05, 0.90)
+
+    def test_invalid_phase1_threshold(self):
+        with pytest.raises(ValueError, match="phase1_threshold"):
+            TwoPhaseWeightStrategy(phase1_threshold=-0.1)
+
+    def test_invalid_phase2_weights(self):
+        with pytest.raises(ValueError, match="phase2_weights"):
+            TwoPhaseWeightStrategy(phase2_weights=(0.1, 0.1))
+
+    def test_name(self):
+        assert TwoPhaseWeightStrategy().name == "two_phase"
+
+    def test_factory_creates_two_phase(self):
+        strategy = WeightStrategyFactory.get_strategy('two_phase')
+        assert isinstance(strategy, TwoPhaseWeightStrategy)
+        assert strategy.name == 'two_phase'
+
+    def test_factory_with_params(self):
+        strategy = WeightStrategyFactory.get_strategy(
+            'two_phase', phase1_threshold=0.15
+        )
+        assert isinstance(strategy, TwoPhaseWeightStrategy)
+        assert strategy.phase1_threshold == 0.15
+
+    def test_phase2_ignores_history(self):
+        """Phase 2 only looks at current CVs, not history."""
+        strategy = TwoPhaseWeightStrategy()
+        cv_history = [(0.50, 0.50, 0.50), (0.30, 0.30, 0.30)]
+        weight_history = [(0.33, 0.33, 0.34), (0.40, 0.40, 0.20)]
+        weights = strategy.calculate_weights(
+            cvs=(0.05, 0.05, 0.30), target_cv=0.05, cv_history=cv_history, weight_history=weight_history
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+    def test_all_dimensions_at_zero(self):
+        """All CVs at zero → phase 2 (both below any threshold)."""
+        strategy = TwoPhaseWeightStrategy()
+        weights = strategy.calculate_weights(
+            cvs=(0.0, 0.0, 0.0), target_cv=0.05, cv_history=[], weight_history=[]
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+    def test_phase1_gives_pool_high_weight_when_pool_cv_high(self):
+        """In phase 1, pool should get significant weight when pool CV is dominant."""
+        strategy = TwoPhaseWeightStrategy()
+        # OSD above threshold but pool CV is much higher
+        weights = strategy.calculate_weights(
+            cvs=(0.20, 0.15, 0.80), target_cv=0.05, cv_history=[], weight_history=[]
+        )
+        # target_distance should give pool the highest weight
+        assert weights[2] > weights[0], "Pool should get more weight than OSD when pool CV >> OSD CV"
