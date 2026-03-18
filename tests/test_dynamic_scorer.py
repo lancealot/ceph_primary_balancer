@@ -268,19 +268,16 @@ class TestCVCalculation:
         assert isinstance(pool_cv, float)
         assert pool_cv >= 0
     
-    def test_cv_caching(self):
-        """Test that CV calculation is cached."""
+    def test_cv_consistency(self):
+        """Test that CV calculation returns consistent results for same state."""
         scorer = DynamicScorer(update_interval=1)
         state = create_simple_cluster_state()
-        
-        # First call calculates
+
+        # Both calls should return the same values
         cvs1 = scorer._calculate_current_cvs(state)
-        
-        # Second call with same state should use cache
         cvs2 = scorer._calculate_current_cvs(state)
-        
+
         assert cvs1 == cvs2
-        assert scorer._last_state_id == id(state)
 
 
 class TestHistoryAccess:
@@ -416,17 +413,6 @@ class TestReset:
         assert len(scorer.cv_history) == 0
         assert len(scorer.weight_history) == 0
     
-    def test_reset_clears_cache(self):
-        """Test that reset clears CV cache."""
-        scorer = DynamicScorer()
-        state = create_simple_cluster_state()
-        
-        scorer.calculate_score(state)
-        assert scorer._last_state_id is not None
-        
-        scorer.reset()
-        assert scorer._last_state_id is None
-        assert scorer._cached_cvs is None
 
 
 class TestIntegrationWithScorer:

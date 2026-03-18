@@ -105,9 +105,6 @@ class DynamicScorer(Scorer):
         self.cv_history: List[Tuple[float, float, float]] = []
         self.weight_history: List[Tuple[float, float, float]] = []
         
-        # Track last state for efficiency
-        self._last_state_id: Optional[int] = None
-        self._cached_cvs: Optional[Tuple[float, float, float]] = None
     
     def _maybe_update_weights(self, state: ClusterState) -> None:
         """Trigger a weight update if we've reached the next interval boundary."""
@@ -187,20 +184,13 @@ class DynamicScorer(Scorer):
     def _calculate_current_cvs(self, state: ClusterState) -> Tuple[float, float, float]:
         """
         Calculate current CV for each dimension.
-        
-        Uses caching to avoid redundant calculations when called multiple
-        times with the same state.
-        
+
         Args:
             state: Current ClusterState
-        
+
         Returns:
             Tuple of (osd_cv, host_cv, pool_cv)
         """
-        # Simple cache check using object id
-        state_id = id(state)
-        if state_id == self._last_state_id and self._cached_cvs is not None:
-            return self._cached_cvs
         
         # Calculate OSD CV
         osd_cv = 0.0
@@ -245,13 +235,7 @@ class DynamicScorer(Scorer):
             if total_w > 0:
                 pool_cv = weighted_sum / total_w
         
-        cvs = (osd_cv, host_cv, pool_cv)
-        
-        # Update cache
-        self._last_state_id = state_id
-        self._cached_cvs = cvs
-        
-        return cvs
+        return (osd_cv, host_cv, pool_cv)
     
     def get_weight_history(self) -> List[Tuple[float, float, float]]:
         """
@@ -344,5 +328,3 @@ class DynamicScorer(Scorer):
         self.iteration_count = 0
         self.cv_history = []
         self.weight_history = []
-        self._last_state_id = None
-        self._cached_cvs = None
