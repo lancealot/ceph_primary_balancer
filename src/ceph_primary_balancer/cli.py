@@ -401,6 +401,10 @@ def main():
     
     if args.dynamic_strategy == 'target_distance':  # Default value
         args.dynamic_strategy = config.get('optimization.dynamic_strategy', 'target_distance')
+
+    # If user explicitly chose a strategy, enable dynamic weights automatically
+    if args.dynamic_strategy != 'target_distance' and not args.dynamic_weights:
+        args.dynamic_weights = True
     
     if args.weight_update_interval == 10:  # Default value
         args.weight_update_interval = config.get('optimization.weight_update_interval', 10)
@@ -481,12 +485,18 @@ def main():
         sys.exit(1)
     
     # Create scorer with configured weights and enabled levels (Phase 6.5)
-    scorer = Scorer(
-        w_osd=args.weight_osd,
-        w_host=args.weight_host,
-        w_pool=args.weight_pool,
-        enabled_levels=enabled_levels
-    )
+    # When dynamic weights are enabled, let the optimizer create a DynamicScorer
+    # instead of a static Scorer — otherwise the static scorer overrides dynamic
+    # weight adaptation entirely.
+    if args.dynamic_weights:
+        scorer = None
+    else:
+        scorer = Scorer(
+            w_osd=args.weight_osd,
+            w_host=args.weight_host,
+            w_pool=args.weight_pool,
+            enabled_levels=enabled_levels
+        )
     
     # Step 1: Collect cluster data
     if offline_mode:
