@@ -109,32 +109,24 @@ class DynamicScorer(Scorer):
         self._last_state_id: Optional[int] = None
         self._cached_cvs: Optional[Tuple[float, float, float]] = None
     
-    def calculate_score(self, state: ClusterState) -> float:
-        """
-        Calculate score, updating weights periodically.
-        
-        This method overrides the base Scorer.calculate_score() to add
-        dynamic weight updates. Weights are recalculated every update_interval
-        iterations based on the current cluster state.
-        
-        Args:
-            state: Current ClusterState
-        
-        Returns:
-            Composite score (lower is better)
-        
-        Note:
-            The score calculation itself is delegated to the parent class.
-            This method only handles the weight update logic.
-        """
-        # Update weights if at interval boundary
+    def _maybe_update_weights(self, state: ClusterState) -> None:
+        """Trigger a weight update if we've reached the next interval boundary."""
         if self.iteration_count % self.update_interval == 0:
             self._update_weights(state)
-        
         self.iteration_count += 1
-        
-        # Use parent class calculation with updated weights
+
+    def calculate_score(self, state: ClusterState) -> float:
+        self._maybe_update_weights(state)
         return super().calculate_score(state)
+
+    def calculate_score_with_components(self, state):
+        """Override to trigger dynamic weight updates before scoring.
+
+        The optimizer's hot loop calls this (not calculate_score), so
+        weights must update here to actually take effect.
+        """
+        self._maybe_update_weights(state)
+        return super().calculate_score_with_components(state)
     
     def _update_weights(self, state: ClusterState) -> None:
         """
