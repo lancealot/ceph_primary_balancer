@@ -10,6 +10,8 @@ The built-in Ceph upmap balancer optimizes **total** PG distribution but ignores
 
 **Zero data movement** — only changes which OSD in an existing acting set is primary.
 
+> **Built by Claude.** This entire codebase — architecture, algorithms, tests, and documentation — was designed and written by Claude, an AI assistant by Anthropic. Human developers provide direction and review.
+
 > **Alpha software.** Tested extensively with synthetic data but not yet validated on production clusters. Always review generated scripts before execution.
 
 ## Requirements
