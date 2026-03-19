@@ -31,20 +31,23 @@ PYTHONPATH=src python3 -m ceph_primary_balancer.cli --help
 
 ```
 src/ceph_primary_balancer/
-├── models.py          # Data models: OSDInfo, PoolInfo, HostInfo, PGInfo, ClusterState, SwapProposal
-├── collector.py       # Gathers data from Ceph CLI (ceph osd tree, ceph pg dump)
-├── analyzer.py        # Statistics, donor/receiver identification (OSD-level and per-pool)
-├── scorer.py          # CV-based composite scoring across OSD/host/pool dimensions
-├── optimizers/        # Optimization algorithms
-│   ├── base.py        # OptimizerBase ABC, OptimizerRegistry, stats tracking
-│   ├── greedy.py      # Greedy optimizer (primary algorithm) with O(1) delta scoring
-│   └── batch_greedy.py
-├── reporter.py        # Terminal output
-├── exporter.py        # JSON export
-├── script_generator.py # Generates bash scripts with pg-upmap-primary commands
-├── config.py          # Config file loading
-├── cli.py             # CLI entry point
-└── benchmark/         # Benchmark framework
+├── models.py            # Data models: OSDInfo, PoolInfo, HostInfo, PGInfo, ClusterState, SwapProposal
+├── collector.py         # Gathers data from Ceph CLI (ceph osd tree, ceph pg dump)
+├── analyzer.py          # Statistics, donor/receiver identification (OSD-level and per-pool)
+├── scorer.py            # CV-based composite scoring across OSD/host/pool dimensions
+├── dynamic_scorer.py    # DynamicScorer: adaptive weight updates during optimization
+├── weight_strategies.py # Weight strategies: target_distance, two_phase
+├── optimizers/
+│   ├── base.py          # OptimizerBase ABC, stats tracking
+│   └── greedy.py        # Greedy optimizer with O(1) delta scoring, stall detection, focused fallback
+├── reporter.py          # Terminal output
+├── exporter.py          # JSON export
+├── script_generator.py  # Generates bash scripts with pg-upmap-primary commands
+├── config.py            # Config file loading
+├── offline.py           # Offline/air-gapped mode: load cluster data from exported archives
+├── cli.py               # CLI entry point
+├── benchmark_cli.py     # Benchmark CLI entry point
+└── benchmark/           # Benchmark framework (generator, profiler, runner, scenarios, reporter)
 ```
 
 ## Development Principles
@@ -75,11 +78,12 @@ src/ceph_primary_balancer/
 - Integration tests should test real workflows, not reimplementations of unit tests at a higher level.
 - Benchmark tests are valuable. Keep them, but keep them focused.
 
-### 5. Documentation Is Not A Feature
+### 5. Documentation
 
-- README.md: What it does, how to install, how to use. That's it.
+- README.md: What it does, how to install, how to use.
+- `docs/` may contain user-facing guides (usage, offline mode, installation, troubleshooting).
 - Code comments explain *why*, not *what*.
-- No separate docs for completed phases, historical benchmarks, or development history. That's what git log is for.
+- No docs for completed phases, historical benchmarks, or development history. That's what git log is for.
 - No planning documents in the repo. Plans go in issues or discussion, not committed markdown.
 
 ### 6. Git Discipline
@@ -87,28 +91,6 @@ src/ceph_primary_balancer/
 - Commit messages: imperative mood, explain the *why*. "Fix pool-level scoring to use CV instead of raw variance" not "Update scorer.py".
 - One concern per commit. Don't mix refactoring with feature work.
 - No generated files in the repo (benchmark results, HTML reports, comparison outputs).
-
-## Completed Algorithmic Fixes
-
-### ~~Critical: Pool balancing is broken by design~~ FIXED
-
-Per-pool donor/receiver identification implemented in `analyzer.identify_pool_donors_receivers()`. The optimizer now generates swap candidates from both OSD-level and pool-level donors/receivers, so pool-imbalanced swaps are proposed even when involved OSDs are near the global mean.
-
-### ~~Critical: Swap evaluation is O(N) when it should be O(1)~~ FIXED
-
-`scorer.calculate_swap_delta()` computes score deltas from the 4-5 values that actually change. No state copies, no re-aggregation. `ScoreComponents` caches variance, mean, and sum-of-squares for O(1) delta computation. The old `simulate_swap_score()` remains only as a test oracle.
-
-### ~~Major: Dimensional scores are not comparable~~ FIXED
-
-Composite score now uses CV (coefficient of variation = std/mean) for each dimension instead of raw variance. CV is scale-invariant, so dimensions are comparable regardless of their absolute magnitude. Score = `w_osd * osd_cv + w_host * host_cv + w_pool * avg_pool_cv`.
-
-### ~~Minor: Termination only checks OSD dimension~~ FIXED
-
-Termination now checks ALL enabled dimensions (OSD, host, pool). The optimizer continues until every enabled dimension has CV at or below target_cv. The CLI pre-optimization check also considers all enabled dimensions before skipping optimization.
-
-### ~~Minor: No per-pool optimization loop~~ FIXED
-
-Each iteration now runs two candidate searches: the existing global search (OSD-level + pool-level donors/receivers) and a per-pool search that targets pools with CV above target. The per-pool search iterates all PGs in high-CV pools without donor/receiver filtering, catching swaps that threshold-based filtering misses. The better swap wins.
 
 ## What NOT To Do
 
@@ -139,7 +121,6 @@ Large 500 OSD / 10 pool          1973 144.2s  0.300 → 0.024  0.095 → 0.002  
 Sparse 840 OSD / 30 pool          196   9.5s  0.327 → 0.221  0.056 → 0.000  0.248 → 0.208
 Multi-pool 60 OSD / 20            782  19.8s  0.301 → 0.007  0.105 → 0.001  0.538 → 0.190
 ```
-All three dimensions improve simultaneously. Multi-dimension termination + per-pool search dramatically improved pool convergence (e.g., Multi-pool Pool CV: 0.377 → 0.190). Runtime increased for Large scenario due to more iterations; `max_iterations` caps this in production.
 
 ### Phase 4: Pool CV convergence — DONE
 Pool CV is the hardest dimension to converge. OSD and host reach floor quickly, but pool CV stalls above target — especially for sparse clusters (many OSDs, few PGs per pool). Pool CV floor is structural: limited by acting set constraints (each PG can only choose primary from its ~3-member acting set) and integer primary counts. The `_pool_cv_floor` formula gives a theoretical lower bound; the true floor is higher due to acting set constraints.
@@ -169,6 +150,39 @@ Pool CV     67.80%   18.77%      -72.3%
 Swaps: 1081, Time: 218s, Termination: swap exhaustion
 ```
 Pool CV floor (18.77%) is structural — 26/30 pools are sparse (too few PGs per OSD), 4 balanceable pools all converged to within 2% of their theoretical minimum.
+
+### Phase 6: Feature completeness — DONE
+Features added after the algorithmic core stabilized:
+
+1. **Configurable optimization levels** — `--optimization-levels osd,host,pool` enables/disables dimensions independently. Scorer skips disabled dimensions entirely (not just zero-weighted). Auto-normalizes weights for enabled levels.
+
+2. **Dynamic weight strategies** — `DynamicScorer` wraps `Scorer` with periodic weight recalculation. Two strategies implemented in `weight_strategies.py`:
+   - `target_distance` (default): weights proportional to distance from target CV, minimum weight floor prevents dimension neglect.
+   - `two_phase`: target_distance in phase 1, hard-switches to pool-focused weights once OSD/host converge.
+
+3. **Focused fallback search** — `find_best_focused_swap()` in `greedy.py` breaks local minima by creating a single-dimension scorer targeting the worst dimension. Bounded regression limit (default 0.001) prevents the focused swap from significantly worsening other dimensions.
+
+4. **Stagnation detection** — tracks fallback frequency and composite score plateau over a sliding window. Terminates optimization when stuck rather than wasting iterations.
+
+5. **Offline mode** — `--from-file` loads cluster data from exported `.tar.gz` archives for air-gapped environments. Export script, metadata validation, age warnings, manual health verification in generated scripts.
+
+6. **OptimizerBase ABC** — common interface for optimizer algorithms with scorer management, stats tracking, termination checking, progress reporting. Batch greedy optimizer was added then removed per "delete, don't deprecate" — only `GreedyOptimizer` remains.
+
+## Roadmap
+
+Potential improvements, roughly ordered by impact:
+
+### Performance
+- **Focused fallback is exhaustive** — `find_best_focused_swap()` evaluates every PG in the cluster with two scorer calls each. At 500+ OSDs this dominates runtime when the optimizer stalls. Sampling a subset or early-exit-on-good-enough would cut stall iterations significantly.
+- **Scorer object recreated per iteration** — `find_best_focused_swap()` creates a new `Scorer` with focus weights on every call. Could be cached and reused.
+
+### Algorithm quality
+- **Pool CV floor margin too tight** — the 1.02x margin on theoretical floor underestimates the real floor by ~40% (acting set constraints + integer effects). Pools get skipped as "unbalanceable" when they could still improve. Loosening to ~1.15x would help.
+- **Per-dimension termination targets** — a single `target_cv` for all dimensions is a mismatch. OSD can reach 0.01, but pool CV has a structural floor of 0.15-0.30 for sparse clusters. Per-dimension targets (`--target-cv-osd`, `--target-cv-pool`) would let users express realistic goals.
+
+### Cleanup
+- **`_check_termination()` redundancy** — `base.py:_check_termination()` recalculates OSD/host/pool stats that are already available from the cached `ScoreComponents`. Should accept pre-computed components.
+- **`_record_iteration()` fallback** — `base.py:_record_iteration()` calls `calculate_score()` when no pre-computed score is passed. The greedy optimizer always passes a score, but the fallback path exists. Could be simplified.
 
 ## Code Style
 

@@ -143,12 +143,10 @@ def main():
         '--dynamic-strategy',
         type=str,
         default='target_distance',
-        choices=['proportional', 'target_distance', 'adaptive_hybrid', 'two_phase'],
+        choices=['target_distance', 'two_phase'],
         help='Dynamic weight strategy (default: target_distance). '
              'Only used if --dynamic-weights is enabled. '
              'target_distance: Focus on dimensions above target (recommended). '
-             'proportional: Weight proportionally to CV values. '
-             'adaptive_hybrid: Advanced strategy with improvement tracking and smoothing. '
              'two_phase: Hard switch to pool-focused weights once OSD/host converge.'
     )
     

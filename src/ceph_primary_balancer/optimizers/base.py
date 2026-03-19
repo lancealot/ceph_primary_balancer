@@ -80,7 +80,7 @@ class OptimizerBase(ABC):
             pool_filter: Optional pool_id to only optimize PGs from that pool
             enabled_levels: Optional list of enabled levels ['osd', 'host', 'pool']
             dynamic_weights: Enable dynamic weight adaptation (Phase 7.1)
-            dynamic_strategy: Weight strategy ('proportional', 'target_distance', 'adaptive_hybrid')
+            dynamic_strategy: Weight strategy ('target_distance', 'two_phase')
             weight_update_interval: How often to recalculate weights (iterations)
             strategy_params: Optional parameters for weight strategy
             verbose: Enable progress output
