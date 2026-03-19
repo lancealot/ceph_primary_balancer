@@ -172,15 +172,13 @@ Features added after the algorithmic core stabilized:
 
 Potential improvements, roughly ordered by impact:
 
-### Algorithm quality
-- **Per-dimension termination targets** — a single `target_cv` for all dimensions is a mismatch. OSD can reach 0.01, but pool CV has a structural floor of 0.15-0.30 for sparse clusters. Per-dimension targets (`--target-cv-osd`, `--target-cv-pool`) would let users express realistic goals.
-
 ### Research
 - **Compare with Ceph's built-in upmap read balancer** — Ceph has a native `osd_read_balance` / upmap read balancer (added in Reef). Compare algorithmic strategies: how it identifies imbalance, what scoring/termination it uses, whether it operates per-pool or globally, and how it handles sparse pools. Identify where our approach diverges and whether there are ideas worth adopting or pitfalls to avoid.
 
 ### Cleanup
 - **`_check_termination()` redundancy** — `base.py:_check_termination()` recalculates OSD/host/pool stats that are already available from the cached `ScoreComponents`. Should accept pre-computed components.
 - **`_record_iteration()` fallback** — `base.py:_record_iteration()` calls `calculate_score()` when no pre-computed score is passed. The greedy optimizer always passes a score, but the fallback path exists. Could be simplified.
+- **Remove `target_cv` plumbing** — `target_cv` defaults to 0.01, which is low enough that stagnation detection always terminates the optimizer before the CV target is reached. No realistic scenario benefits from a higher value. Hardcode 0.01 (or a module constant) and remove the flag from CLI args, config parsing, optimizer constructors, DynamicScorer, weight strategies, and benchmark infrastructure.
 
 ## Code Style
 
