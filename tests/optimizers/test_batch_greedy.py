@@ -122,7 +122,7 @@ class TestBatchGreedyInitialization:
         optimizer = BatchGreedyOptimizer()
         assert optimizer.batch_size == 10
         assert optimizer.conflict_detection == 'strict'
-        assert optimizer.target_cv == 0.10
+        assert optimizer.target_cv == 0.01
         assert optimizer.algorithm_name == "Batch Greedy (batch_size=10, mode=strict)"
         assert optimizer.is_deterministic is True
     

@@ -58,7 +58,7 @@ class OptimizerBase(ABC):
     
     def __init__(
         self,
-        target_cv: float = 0.10,
+        target_cv: float = 0.01,
         max_iterations: int = 1000,
         scorer: Optional[Scorer] = None,
         pool_filter: Optional[int] = None,

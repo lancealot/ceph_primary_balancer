@@ -813,8 +813,8 @@ class TestTwoPhaseWeightStrategy:
         """Phase 1 uses target_distance weighting, not fixed weights."""
         strategy = TwoPhaseWeightStrategy()
         td = TargetDistanceWeightStrategy(min_weight=0.05)
-        cvs = (0.15, 0.03, 0.30)
-        # OSD above threshold (0.10) → phase 1 → target_distance
+        # OSD at 0.20 is above the threshold floor of 0.15 → phase 1
+        cvs = (0.20, 0.03, 0.30)
         w = strategy.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
         expected = td.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
         assert w == expected
@@ -823,7 +823,8 @@ class TestTwoPhaseWeightStrategy:
         """Host still above threshold → phase 1 (target_distance)."""
         strategy = TwoPhaseWeightStrategy()
         td = TargetDistanceWeightStrategy(min_weight=0.05)
-        cvs = (0.03, 0.15, 0.30)
+        # Host at 0.20 is above the threshold floor of 0.15
+        cvs = (0.03, 0.20, 0.30)
         w = strategy.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
         expected = td.calculate_weights(cvs=cvs, target_cv=0.05, cv_history=[], weight_history=[])
         assert w == expected
@@ -845,14 +846,33 @@ class TestTwoPhaseWeightStrategy:
         assert weights == (0.10, 0.05, 0.85)
 
     def test_default_threshold_scales_with_target(self):
-        """Default threshold is 2× target_cv."""
+        """Default threshold is max(2× target_cv, 0.15)."""
         strategy = TwoPhaseWeightStrategy()
-        # target_cv=0.10 → threshold = 0.20
+        # target_cv=0.10 → threshold = max(0.20, 0.15) = 0.20
         # OSD=0.15, Host=0.15 → both below 0.20 → phase 2
         weights = strategy.calculate_weights(
             cvs=(0.15, 0.15, 0.40), target_cv=0.10, cv_history=[], weight_history=[]
         )
         assert weights == (0.10, 0.05, 0.85)
+
+    def test_default_threshold_has_floor(self):
+        """With very low target_cv, threshold floors at 0.15."""
+        strategy = TwoPhaseWeightStrategy()
+        # target_cv=0.01 → 2× = 0.02, but floor at 0.15
+        # OSD=0.10, Host=0.05 → both below 0.15 → phase 2
+        weights = strategy.calculate_weights(
+            cvs=(0.10, 0.05, 0.30), target_cv=0.01, cv_history=[], weight_history=[]
+        )
+        assert weights == (0.10, 0.05, 0.85)
+
+        # OSD=0.20 → above 0.15 → still phase 1
+        td = TargetDistanceWeightStrategy(min_weight=0.05)
+        cvs_p1 = (0.20, 0.05, 0.30)
+        weights_p1 = strategy.calculate_weights(
+            cvs=cvs_p1, target_cv=0.01, cv_history=[], weight_history=[]
+        )
+        expected = td.calculate_weights(cvs=cvs_p1, target_cv=0.01, cv_history=[], weight_history=[])
+        assert weights_p1 == expected
 
     def test_explicit_threshold_overrides_default(self):
         """Explicit phase1_threshold overrides 2× target_cv."""
