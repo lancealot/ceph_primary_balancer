@@ -551,12 +551,15 @@ class GreedyOptimizer(OptimizerBase):
         stall_limit = 10
         fallback_window_size = 20   # track fallback usage over this many iterations
         fallback_window: List[bool] = []  # rolling window of was-fallback flags
-        worst_cv_at_fallback_window_start: Optional[float] = None
+        fallback_dim_cvs_at_start: Optional[Dict[str, float]] = None
 
-        # Global stagnation detection: stop when worst aggregate dimension
-        # plateaus across ALL search paths (not just focused fallback)
+        # Global stagnation detection: stop when no dimension above target
+        # is improving across a window of iterations.  Per-dimension tracking
+        # prevents premature stopping when one dimension stalls at its floor
+        # while others are still converging (e.g., pool CV at floor while
+        # OSD CV is still dropping).
         stagnation_window = 50       # check progress over this many iterations
-        stagnation_cv_at_window_start: Optional[float] = None
+        stagnation_dim_cvs_at_start: Optional[Dict[str, float]] = None
         stagnation_window_iter = 0
 
         # Pre-build pool_pgs index once — pool membership never changes
@@ -657,27 +660,35 @@ class GreedyOptimizer(OptimizerBase):
             fallback_count = sum(fallback_window)
             if fallback_count >= stall_limit:
                 components = self.scorer.calculate_score_with_components(state)
-                dim_cvs = []
+                fb_dim_cvs: Dict[str, float] = {}
                 if 'osd' in self.scorer.enabled_levels:
-                    dim_cvs.append(components.osd_cv)
+                    fb_dim_cvs['osd'] = components.osd_cv
                 if 'host' in self.scorer.enabled_levels:
-                    dim_cvs.append(components.host_cv)
+                    fb_dim_cvs['host'] = components.host_cv
                 if 'pool' in self.scorer.enabled_levels:
-                    dim_cvs.append(components.avg_pool_cv)
-                worst_cv = max(dim_cvs) if dim_cvs else 0.0
+                    fb_dim_cvs['pool'] = components.avg_pool_cv
 
-                if worst_cv_at_fallback_window_start is None:
-                    worst_cv_at_fallback_window_start = worst_cv
-                if worst_cv >= worst_cv_at_fallback_window_start * 0.99:
-                    # Worst aggregate dimension hasn't improved by 1% — truly stalled
+                if fallback_dim_cvs_at_start is None:
+                    fallback_dim_cvs_at_start = fb_dim_cvs.copy()
+
+                # Check if ANY dimension above target has improved by >= 1%
+                any_improving = False
+                for dim, cv in fb_dim_cvs.items():
+                    start_cv = fallback_dim_cvs_at_start.get(dim, 0.0)
+                    if cv > self.target_cv and start_cv > 0 and cv < start_cv * 0.99:
+                        any_improving = True
+                        break
+
+                if not any_improving:
+                    fb_worst = max(fb_dim_cvs.values()) if fb_dim_cvs else 0.0
                     if self.verbose:
                         print(f"Stalled: {fallback_count} focused-fallback iterations "
-                              f"in last {len(fallback_window)}, worst CV {worst_cv:.2%} "
-                              f"not improving (was {worst_cv_at_fallback_window_start:.2%})")
+                              f"in last {len(fallback_window)}, no dimension above target improving "
+                              f"(worst CV {fb_worst:.2%})")
                     break
                 # Some dimension is improving — continue
                 fallback_window.clear()
-                worst_cv_at_fallback_window_start = worst_cv
+                fallback_dim_cvs_at_start = fb_dim_cvs.copy()
             
             # Apply swap to state
             apply_swap(state, swap)
@@ -688,30 +699,41 @@ class GreedyOptimizer(OptimizerBase):
             self.stats.swaps_applied += 1
             self._record_iteration(state)
 
-            # Global stagnation detection: if the worst aggregate dimension
-            # hasn't improved over a window of iterations, stop.
+            # Global stagnation detection: if NO dimension above target has
+            # improved over a window of iterations, stop.  Per-dimension
+            # tracking prevents premature stopping when one dimension stalls
+            # at its floor while others are still converging.
             stag_components = self.scorer.calculate_score_with_components(state)
-            stag_cvs = []
+            stag_dim_cvs: Dict[str, float] = {}
             if 'osd' in self.scorer.enabled_levels:
-                stag_cvs.append(stag_components.osd_cv)
+                stag_dim_cvs['osd'] = stag_components.osd_cv
             if 'host' in self.scorer.enabled_levels:
-                stag_cvs.append(stag_components.host_cv)
+                stag_dim_cvs['host'] = stag_components.host_cv
             if 'pool' in self.scorer.enabled_levels:
-                stag_cvs.append(stag_components.avg_pool_cv)
-            stag_worst_cv = max(stag_cvs) if stag_cvs else 0.0
+                stag_dim_cvs['pool'] = stag_components.avg_pool_cv
 
-            if stagnation_cv_at_window_start is None:
-                stagnation_cv_at_window_start = stag_worst_cv
+            if stagnation_dim_cvs_at_start is None:
+                stagnation_dim_cvs_at_start = stag_dim_cvs.copy()
                 stagnation_window_iter = iteration
             elif iteration - stagnation_window_iter >= stagnation_window:
-                if stag_worst_cv >= stagnation_cv_at_window_start * 0.99:
+                # Check if ANY dimension above target has improved by >= 1%
+                any_improving = False
+                for dim, cv in stag_dim_cvs.items():
+                    start_cv = stagnation_dim_cvs_at_start.get(dim, 0.0)
+                    if cv > self.target_cv and start_cv > 0 and cv < start_cv * 0.99:
+                        any_improving = True
+                        break
+
+                if not any_improving:
+                    stag_worst = max(stag_dim_cvs.values()) if stag_dim_cvs else 0.0
+                    start_worst = max(stagnation_dim_cvs_at_start.values()) if stagnation_dim_cvs_at_start else 0.0
                     if self.verbose:
-                        print(f"  [stagnation] worst CV {stag_worst_cv:.2%} not improving "
-                              f"(was {stagnation_cv_at_window_start:.2%}) "
+                        print(f"  [stagnation] no dimension above target improving "
+                              f"(worst CV {stag_worst:.2%}, was {start_worst:.2%}) "
                               f"over last {stagnation_window} iterations, stopping")
                     break
-                # Reset window
-                stagnation_cv_at_window_start = stag_worst_cv
+                # At least one dimension is improving — reset window
+                stagnation_dim_cvs_at_start = stag_dim_cvs.copy()
                 stagnation_window_iter = iteration
 
             # Print progress every 10 iterations
