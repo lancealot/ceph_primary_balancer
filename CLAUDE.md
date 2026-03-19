@@ -172,10 +172,6 @@ Features added after the algorithmic core stabilized:
 
 Potential improvements, roughly ordered by impact:
 
-### Performance
-- **Focused fallback is exhaustive** — `find_best_focused_swap()` evaluates every PG in the cluster with two scorer calls each. At 500+ OSDs this dominates runtime when the optimizer stalls. Sampling a subset or early-exit-on-good-enough would cut stall iterations significantly.
-- **Scorer object recreated per iteration** — `find_best_focused_swap()` creates a new `Scorer` with focus weights on every call. Could be cached and reused.
-
 ### Algorithm quality
 - **Per-dimension termination targets** — a single `target_cv` for all dimensions is a mismatch. OSD can reach 0.01, but pool CV has a structural floor of 0.15-0.30 for sparse clusters. Per-dimension targets (`--target-cv-osd`, `--target-cv-pool`) would let users express realistic goals.
 
