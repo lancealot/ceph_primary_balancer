@@ -1,15 +1,4 @@
-"""
-Enhanced Reporting Module for Ceph Primary PG Balancer.
-
-This module provides comprehensive reporting capabilities including:
-- Terminal reports with formatted tables
-- Markdown report generation
-- Before/after comparisons at all levels (OSD, Host, Pool)
-- Top N donors/receivers identification
-- Visual formatting elements
-
-Phase 3 Feature: Complete reporting with markdown export.
-"""
+"""Terminal and markdown reporting for before/after analysis."""
 
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
@@ -19,23 +8,8 @@ from .analyzer import calculate_statistics, get_pool_statistics_summary
 
 
 class Reporter:
-    """
-    Generate comprehensive analysis reports in multiple formats.
-    
-    Supports:
-    - Enhanced terminal output with tables
-    - Markdown report generation
-    - Before/after comparison tables
-    - Multi-dimensional analysis (OSD, Host, Pool)
-    """
-    
+
     def __init__(self, top_n: int = 10):
-        """
-        Initialize Reporter.
-        
-        Args:
-            top_n: Number of top donors/receivers to show (default: 10)
-        """
         self.top_n = top_n
     
     def generate_terminal_report(

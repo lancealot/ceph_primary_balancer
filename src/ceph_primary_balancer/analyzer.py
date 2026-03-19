@@ -1,10 +1,4 @@
-"""
-Statistical analysis module for Ceph Primary PG Balancer.
-
-This module provides functions to analyze primary PG distribution across OSDs,
-calculate distribution statistics, identify imbalanced OSDs (donors and receivers),
-and generate human-readable summary reports.
-"""
+"""Statistical analysis: distribution stats, donor/receiver identification."""
 
 import statistics
 from typing import Dict, List, Set, Tuple

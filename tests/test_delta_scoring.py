@@ -5,7 +5,8 @@ from ceph_primary_balancer.models import (
     ClusterState, PGInfo, OSDInfo, HostInfo, PoolInfo, SwapProposal,
 )
 from ceph_primary_balancer.scorer import Scorer
-from ceph_primary_balancer.optimizers.greedy import simulate_swap_score, find_best_swap
+from ceph_primary_balancer.optimizers.greedy import find_best_swap
+from test_helpers import simulate_swap_score
 from ceph_primary_balancer.benchmark.generator import generate_synthetic_cluster
 
 

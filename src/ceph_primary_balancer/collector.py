@@ -1,17 +1,4 @@
-"""
-Data collection module for the Ceph Primary PG Balancer.
-
-This module is responsible for fetching data from the Ceph cluster via CLI commands
-and constructing ClusterState objects. It executes Ceph commands, parses JSON output,
-and populates data models with PG and OSD information.
-
-Functions:
-    run_ceph_command: Execute Ceph CLI commands and parse JSON output
-    collect_pg_data: Fetch all placement group information
-    collect_osd_data: Collect OSD metadata and host topology from the cluster
-    collect_pool_data: Fetch pool information and metadata from the cluster (Phase 2)
-    build_cluster_state: Combine PG, OSD, host, and pool data into a complete ClusterState
-"""
+"""Collect and parse Ceph cluster data into ClusterState."""
 
 import subprocess
 import json
@@ -22,18 +9,7 @@ from .models import PGInfo, OSDInfo, HostInfo, PoolInfo, ClusterState
 
 
 def run_ceph_command(cmd: List[str]) -> dict:
-    """
-    Execute a Ceph command and return parsed JSON output.
-    
-    Args:
-        cmd: Command to execute as a list of strings (e.g., ['ceph', 'pg', 'dump'])
-    
-    Returns:
-        dict: Parsed JSON output from the command
-    
-    Raises:
-        SystemExit: Exits with code 1 if command fails or output is invalid
-    """
+    """Execute a Ceph CLI command and return parsed JSON. Exits on failure."""
     try:
         result = subprocess.run(
             cmd,
@@ -191,37 +167,14 @@ def collect_pool_data() -> Dict[int, PoolInfo]:
 
 
 def build_cluster_state(from_file: Optional[str] = None) -> ClusterState:
-    """
-    Combine PG, OSD, host, and pool data into a complete ClusterState.
-    
-    Collects all PG, OSD, host topology, and pool information, then calculates:
-    - OSD-level: primary_count and total_pg_count for each OSD
-    - Host-level: Aggregated primary_count and total_pg_count for each host
-    - Pool-level: Per-pool primary distribution across OSDs (Phase 2)
-    
-    Args:
-        from_file: Path to .tar.gz export file for offline mode (None = live cluster)
-        
-    Returns:
-        ClusterState: Complete cluster state with populated counts at all levels
-        
-    Raises:
-        OfflineExportError: If offline export is invalid (offline mode only)
-        SystemExit: If live cluster connection fails (live mode only)
-    """
+    """Build ClusterState from live cluster or offline export."""
     if from_file:
-        # Offline mode: Load from export files
         from . import offline
-        
-        # Extract if not already extracted
         if from_file.endswith('.tar.gz'):
             export_dir = offline.extract_export_archive(from_file)
         else:
             export_dir = from_file
-        
-        # Load and return cluster state
         return offline.load_from_export_files(export_dir)
-    
     else:
         pgs = collect_pg_data()
         osds, hosts = collect_osd_data()

@@ -1,22 +1,9 @@
-"""
-Test suite for Phase 1: Host-Level Balancing functionality.
-
-This module tests the new host-aware optimization features including:
-- Host topology extraction
-- Host-level statistics calculation
-- Multi-dimensional scoring
-- Host-aware swap prioritization
-"""
-
-import sys
-import os
-
-# Add src to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+"""Tests for host-level balancing."""
 
 from ceph_primary_balancer.models import PGInfo, OSDInfo, HostInfo, ClusterState, SwapProposal
 from ceph_primary_balancer.scorer import Scorer
-from ceph_primary_balancer.optimizers.greedy import simulate_swap_score, apply_swap
+from ceph_primary_balancer.optimizers.greedy import apply_swap
+from test_helpers import simulate_swap_score
 from ceph_primary_balancer.analyzer import calculate_statistics
 
 
