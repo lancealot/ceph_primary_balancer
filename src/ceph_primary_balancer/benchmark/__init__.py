@@ -37,7 +37,6 @@ from .profiler import (
 from .quality_analyzer import (
     analyze_balance_quality,
     analyze_convergence,
-    analyze_stability,
     BalanceQualityMetrics,
     ConvergenceMetrics,
     StabilityMetrics,
@@ -70,7 +69,6 @@ __all__ = [
     # Quality Analyzer
     'analyze_balance_quality',
     'analyze_convergence',
-    'analyze_stability',
     'BalanceQualityMetrics',
     'ConvergenceMetrics',
     'StabilityMetrics',

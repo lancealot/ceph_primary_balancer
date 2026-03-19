@@ -8,7 +8,7 @@ results including balance improvement, convergence, and stability.
 import copy
 import statistics
 from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
+from typing import List, Optional
 
 from ..models import ClusterState, SwapProposal, Statistics
 from ..analyzer import calculate_statistics
@@ -271,11 +271,7 @@ def analyze_convergence(
         ConvergenceMetrics
     """
     if scorer is None:
-        scorer = Scorer(
-            weight_osd=0.5,
-            weight_host=0.3,
-            weight_pool=0.2
-        )
+        scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
     
     # Calculate initial CV
     initial_counts = [osd.primary_count for osd in state.osds.values()]
@@ -336,135 +332,3 @@ def analyze_convergence(
     )
 
 
-def analyze_stability(
-    state: ClusterState,
-    num_runs: int = 10,
-    target_cv: float = 0.10,
-    scorer: Optional[Scorer] = None,
-    max_iterations: int = 1000
-) -> StabilityMetrics:
-    """
-    Test solution stability across multiple runs.
-    
-    Args:
-        state: ClusterState to optimize
-        num_runs: Number of optimization runs
-        target_cv: Target CV
-        scorer: Scorer instance (None = create default)
-        max_iterations: Maximum optimization iterations
-        
-    Returns:
-        StabilityMetrics
-    """
-    if scorer is None:
-        scorer = Scorer(
-            weight_osd=0.5,
-            weight_host=0.3,
-            weight_pool=0.2
-        )
-    
-    # Calculate initial CV
-    initial_counts = [osd.primary_count for osd in state.osds.values()]
-    initial_stats = calculate_statistics(initial_counts)
-    initial_cv = initial_stats.cv
-    
-    # Run multiple times and collect results
-    cv_improvements = []
-    swap_counts = []
-    final_cvs = []
-    
-    for _ in range(num_runs):
-        state_copy = copy.deepcopy(state)
-        swaps = optimize_primaries(
-            state=state_copy,
-            scorer=scorer,
-            target_cv=target_cv,
-            max_iterations=max_iterations
-        )
-        
-        # Calculate final CV
-        final_counts = [osd.primary_count for osd in state_copy.osds.values()]
-        final_stats = calculate_statistics(final_counts)
-        final_cv = final_stats.cv
-        
-        # Record metrics
-        cv_improvement = ((initial_cv - final_cv) / initial_cv * 100) if initial_cv > 0 else 0
-        cv_improvements.append(cv_improvement)
-        swap_counts.append(len(swaps))
-        final_cvs.append(final_cv)
-    
-    # Calculate statistics
-    cv_improvement_mean = statistics.mean(cv_improvements)
-    cv_improvement_std = statistics.stdev(cv_improvements) if len(cv_improvements) > 1 else 0.0
-    
-    swaps_count_mean = statistics.mean(swap_counts)
-    swaps_count_std = statistics.stdev(swap_counts) if len(swap_counts) > 1 else 0.0
-    
-    # Determinism score: inverse of variation
-    # Perfect determinism (std = 0) = 100, high variation = 0
-    cv_coefficient_of_variation = cv_improvement_std / cv_improvement_mean if cv_improvement_mean > 0 else 0
-    determinism_score = max(0.0, 100.0 * (1.0 - min(1.0, cv_coefficient_of_variation)))
-    
-    return StabilityMetrics(
-        runs_count=num_runs,
-        cv_improvement_mean=cv_improvement_mean,
-        cv_improvement_std=cv_improvement_std,
-        swaps_count_mean=swaps_count_mean,
-        swaps_count_std=swaps_count_std,
-        determinism_score=determinism_score
-    )
-
-
-def analyze_multi_dimensional_balance(
-    state: ClusterState,
-    weight_combinations: Optional[List[Tuple[float, float, float]]] = None
-) -> Dict[str, BalanceQualityMetrics]:
-    """
-    Analyze balance across dimensions with different weights.
-    
-    Args:
-        state: ClusterState to optimize
-        weight_combinations: List of (w_osd, w_host, w_pool) tuples
-        
-    Returns:
-        Dict mapping weight combination name to BalanceQualityMetrics
-    """
-    if weight_combinations is None:
-        weight_combinations = [
-            (1.0, 0.0, 0.0),  # OSD-only
-            (0.7, 0.3, 0.0),  # OSD-Host
-            (0.5, 0.3, 0.2),  # Balanced (default)
-            (0.3, 0.5, 0.2),  # Host-focused
-            (0.3, 0.3, 0.4),  # Pool-focused
-        ]
-    
-    results = {}
-    
-    for w_osd, w_host, w_pool in weight_combinations:
-        # Validate weights sum to 1.0
-        total = w_osd + w_host + w_pool
-        if abs(total - 1.0) > 0.01:
-            continue  # Skip invalid combinations
-        
-        # Create scorer with these weights
-        scorer = Scorer(
-            weight_osd=w_osd,
-            weight_host=w_host,
-            weight_pool=w_pool
-        )
-        
-        # Optimize
-        state_copy = copy.deepcopy(state)
-        swaps = GreedyOptimizer(
-            target_cv=0.10,
-            scorer=scorer,
-        ).optimize(state_copy)
-        
-        # Analyze quality
-        quality = analyze_balance_quality(state, state_copy, swaps)
-        
-        # Create name for this combination
-        name = f"OSD{int(w_osd*100)}_Host{int(w_host*100)}_Pool{int(w_pool*100)}"
-        results[name] = quality
-    
-    return results

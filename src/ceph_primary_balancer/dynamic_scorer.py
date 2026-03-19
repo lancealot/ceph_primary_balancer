@@ -14,7 +14,7 @@ from .scorer import Scorer
 from .models import ClusterState
 from .analyzer import calculate_statistics
 from .scorer import _osd_cv_floor
-from .weight_strategies import WeightStrategyFactory, WeightStrategy
+from .weight_strategies import get_strategy
 
 
 class DynamicScorer(Scorer):
@@ -95,10 +95,7 @@ class DynamicScorer(Scorer):
         self.strategy_params = strategy_params or {}
         
         # Create weight strategy
-        self.weight_calculator: WeightStrategy = WeightStrategyFactory.get_strategy(
-            strategy,
-            **self.strategy_params
-        )
+        self.weight_calculator = get_strategy(strategy, **self.strategy_params)
         
         # History tracking
         self.iteration_count = 0

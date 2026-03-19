@@ -8,79 +8,6 @@ cluster configurations, scales, and imbalance patterns.
 from typing import Dict, List, Any
 
 
-# Standard dataset definitions
-DATASET_SMALL_BALANCED = {
-    'name': 'small_balanced',
-    'description': 'Small balanced cluster for quick testing',
-    'num_osds': 10,
-    'num_hosts': 2,
-    'num_pools': 1,
-    'pgs_per_pool': 100,
-    'replication_factor': 3,
-    'imbalance_cv': 0.05,
-    'imbalance_pattern': 'balanced'
-}
-
-DATASET_SMALL_IMBALANCED = {
-    'name': 'small_imbalanced',
-    'description': 'Small imbalanced cluster',
-    'num_osds': 10,
-    'num_hosts': 2,
-    'num_pools': 1,
-    'pgs_per_pool': 100,
-    'replication_factor': 3,
-    'imbalance_cv': 0.35,
-    'imbalance_pattern': 'random'
-}
-
-DATASET_MEDIUM_REPLICATED = {
-    'name': 'medium_replicated',
-    'description': 'Medium-scale replicated pool',
-    'num_osds': 100,
-    'num_hosts': 10,
-    'num_pools': 3,
-    'pgs_per_pool': 1024,
-    'replication_factor': 3,
-    'imbalance_cv': 0.25,
-    'imbalance_pattern': 'random'
-}
-
-DATASET_MEDIUM_EC = {
-    'name': 'medium_ec',
-    'description': 'Medium-scale erasure-coded pool (8+3)',
-    'type': 'ec',
-    'k': 8,
-    'm': 3,
-    'num_pgs': 2048,
-    'num_osds': 100,
-    'num_hosts': 10,
-    'imbalance_type': 'concentrated',
-    'imbalance_cv': 0.30
-}
-
-DATASET_LARGE_MULTI_POOL = {
-    'name': 'large_multi_pool',
-    'description': 'Large-scale multi-pool configuration',
-    'num_osds': 500,
-    'num_hosts': 50,
-    'num_pools': 10,
-    'pgs_per_pool': 5000,
-    'replication_factor': 3,
-    'imbalance_cv': 0.30,
-    'imbalance_pattern': 'random'
-}
-
-DATASET_XLARGE_STRESS = {
-    'name': 'xlarge_stress',
-    'description': 'Extra-large cluster for stress testing',
-    'num_osds': 1000,
-    'num_hosts': 100,
-    'num_pools': 20,
-    'pgs_per_pool': 5000,
-    'replication_factor': 3,
-    'imbalance_cv': 0.35,
-    'imbalance_pattern': 'random'
-}
 
 # Production-realistic scenario modeled after a real HDD cluster:
 # ~840 OSDs across 60 hosts, ~28 pools sharing the same OSD set,
@@ -318,108 +245,28 @@ PRODUCTION_SCENARIOS = [
 ]
 
 
-# Edge case scenarios
-EDGE_CASE_SCENARIOS = [
-    {
-        'name': 'minimal_cluster',
-        'description': 'Minimal viable cluster (3 OSDs)',
-        'params': {
-            'num_osds': 3,
-            'num_hosts': 1,
-            'num_pools': 1,
-            'pgs_per_pool': 10,
-            'replication_factor': 3,
-            'imbalance_cv': 0.30
-        }
-    },
-    {
-        'name': 'single_host',
-        'description': 'All OSDs on single host',
-        'params': {
-            'num_osds': 20,
-            'num_hosts': 1,
-            'num_pools': 2,
-            'pgs_per_pool': 100,
-            'replication_factor': 3,
-            'imbalance_cv': 0.30
-        }
-    },
-    {
-        'name': 'worst_case_imbalance',
-        'description': 'Extreme worst-case imbalance',
-        'params': {
-            'num_osds': 50,
-            'num_hosts': 5,
-            'num_pools': 1,
-            'pgs_per_pool': 500,
-            'replication_factor': 3,
-            'imbalance_cv': 0.50,
-            'imbalance_pattern': 'worst_case'
-        }
-    },
-    {
-        'name': 'already_balanced',
-        'description': 'Already well-balanced cluster',
-        'params': {
-            'num_osds': 100,
-            'num_hosts': 10,
-            'num_pools': 3,
-            'pgs_per_pool': 1000,
-            'replication_factor': 3,
-            'imbalance_cv': 0.05,
-            'imbalance_pattern': 'balanced'
-        }
-    }
-]
-
-
 def get_all_scenarios() -> Dict[str, List[Dict[str, Any]]]:
-    """
-    Get all available benchmark scenarios organized by category.
-    
-    Returns:
-        Dict mapping category name to list of scenarios
-    """
+    """Get all available benchmark scenarios organized by category."""
     return {
         'performance': PERFORMANCE_SCENARIOS,
         'quality': QUALITY_SCENARIOS,
         'production': PRODUCTION_SCENARIOS,
         'scalability': SCALABILITY_SCENARIOS,
         'stability': STABILITY_SCENARIOS,
-        'edge_cases': EDGE_CASE_SCENARIOS
     }
 
 
 def get_scenario_by_name(name: str) -> Dict[str, Any]:
-    """
-    Get a specific scenario by name.
-    
-    Args:
-        name: Scenario name
-        
-    Returns:
-        Scenario dict
-        
-    Raises:
-        ValueError: If scenario name not found
-    """
-    all_scenarios = get_all_scenarios()
-    
-    for category_scenarios in all_scenarios.values():
+    """Get a specific scenario by name."""
+    for category_scenarios in get_all_scenarios().values():
         for scenario in category_scenarios:
             if scenario['name'] == name:
                 return scenario
-    
     raise ValueError(f"Scenario '{name}' not found")
 
 
 def get_quick_suite() -> List[Dict[str, Any]]:
-    """
-    Get a quick benchmark suite for rapid testing.
-    
-    Returns:
-        List of scenarios (small/fast only)
-    """
+    """Quick benchmark suite for rapid testing."""
     return [
         PERFORMANCE_SCENARIOS[0],  # tiny_smoke
         PERFORMANCE_SCENARIOS[1],  # small_quick
@@ -428,12 +275,7 @@ def get_quick_suite() -> List[Dict[str, Any]]:
 
 
 def get_standard_suite() -> List[Dict[str, Any]]:
-    """
-    Get standard benchmark suite for regular testing.
-    
-    Returns:
-        List of scenarios (balanced coverage)
-    """
+    """Standard benchmark suite for regular testing."""
     return [
         PERFORMANCE_SCENARIOS[1],  # small_quick
         PERFORMANCE_SCENARIOS[2],  # medium_standard
@@ -442,19 +284,3 @@ def get_standard_suite() -> List[Dict[str, Any]]:
         QUALITY_SCENARIOS[3],      # multi_pool_complex
         PRODUCTION_SCENARIOS[0],   # production_hdd_cluster
     ]
-
-
-def get_comprehensive_suite() -> List[Dict[str, Any]]:
-    """
-    Get comprehensive benchmark suite (all scenarios).
-    
-    Returns:
-        List of all scenarios
-    """
-    all_scenarios = get_all_scenarios()
-    suite = []
-    
-    for category_scenarios in all_scenarios.values():
-        suite.extend(category_scenarios)
-    
-    return suite

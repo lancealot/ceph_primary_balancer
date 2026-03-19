@@ -23,33 +23,6 @@ from ..scorer import Scorer, _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
 from .. import analyzer
 
 
-def calculate_variance(osds: Dict[int, OSDInfo]) -> float:
-    """
-    Calculate variance of primary distribution across OSDs.
-    
-    Variance measures how spread out the primary counts are from the mean.
-    Formula: Σ(count_i - mean)² / n
-    
-    Args:
-        osds: Dictionary mapping OSD ID to OSDInfo
-        
-    Returns:
-        Variance value (float)
-    """
-    if not osds:
-        return 0.0
-    
-    # Extract all primary counts
-    primary_counts = [osd.primary_count for osd in osds.values()]
-    
-    # Calculate mean
-    mean = sum(primary_counts) / len(primary_counts)
-    
-    # Calculate variance: Σ(count_i - mean)² / n
-    variance = sum((count - mean) ** 2 for count in primary_counts) / len(primary_counts)
-    
-    return variance
-
 
 def simulate_swap_score(state: ClusterState, pgid: str, new_primary: int, scorer: Scorer) -> float:
     """

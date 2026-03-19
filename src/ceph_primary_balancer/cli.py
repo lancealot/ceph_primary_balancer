@@ -15,78 +15,12 @@ import os
 from datetime import datetime
 from pathlib import Path
 from . import collector, analyzer, script_generator
-from .optimizers import OptimizerRegistry
+from .optimizers import GreedyOptimizer
 from .scorer import Scorer
 from .exporter import JSONExporter
 from .reporter import Reporter
 from .config import Config, ConfigError
 
-
-def print_optimization_strategies():
-    """Print available optimization strategies and their descriptions."""
-    print("\n" + "="*80)
-    print("Available Optimization Strategies (Phase 6.5)")
-    print("="*80 + "\n")
-    
-    strategies = [
-        {
-            'name': 'OSD-ONLY',
-            'flag': '--optimization-levels osd',
-            'description': 'Balances primary distribution across OSDs',
-            'speed': 'Fastest strategy, simplest approach',
-            'use_for': 'Small clusters, quick fixes, lab environments',
-            'performance': 'Time: ~1× baseline, Memory: ~1× baseline'
-        },
-        {
-            'name': 'OSD+HOST',
-            'flag': '--optimization-levels osd,host',
-            'description': 'Balances OSDs and host network load',
-            'speed': 'Good balance of speed and quality',
-            'use_for': 'Multi-host clusters, network hotspots',
-            'performance': 'Time: ~2× baseline, Memory: ~1.5× baseline'
-        },
-        {
-            'name': 'OSD+POOL',
-            'flag': '--optimization-levels osd,pool',
-            'description': 'Balances OSDs and per-pool distribution',
-            'speed': 'Good for multi-pool workload isolation',
-            'use_for': 'Multi-pool clusters, workload separation',
-            'performance': 'Time: ~2× baseline, Memory: ~2× baseline'
-        },
-        {
-            'name': 'HOST+POOL',
-            'flag': '--optimization-levels host,pool',
-            'description': 'Balances network and pool-level distribution',
-            'speed': 'Network-focused optimization',
-            'use_for': 'Network-constrained clusters',
-            'performance': 'Time: ~1.5× baseline, Memory: ~1.5× baseline'
-        },
-        {
-            'name': 'FULL-3D (DEFAULT)',
-            'flag': '--optimization-levels osd,host,pool',
-            'description': 'Comprehensive three-dimensional balancing',
-            'speed': 'Best overall quality',
-            'use_for': 'Production clusters, comprehensive optimization',
-            'performance': 'Time: ~3-4× baseline, Memory: ~3× baseline'
-        }
-    ]
-    
-    for i, strategy in enumerate(strategies, 1):
-        print(f"{i}. {strategy['name']}")
-        print(f"   Usage: {strategy['flag']}")
-        print(f"   Description: {strategy['description']}")
-        print(f"   Speed: {strategy['speed']}")
-        print(f"   Use for: {strategy['use_for']}")
-        print(f"   Performance: {strategy['performance']}")
-        print()
-    
-    print("Recommendation:")
-    print("- Development/Testing: Use OSD-only for quick iterations")
-    print("- Small Production (<100 OSDs): Use OSD+HOST")
-    print("- Large Production (>100 OSDs): Use Full 3D")
-    print("- Network-Constrained: Use HOST+POOL or OSD+HOST")
-    print("- Single-Pool Clusters: Use OSD+HOST (skip pool optimization)")
-    print("\n" + "="*80 + "\n")
 
 
 def main():
@@ -230,11 +164,6 @@ def main():
              'Phase 6.5: Enables selective dimension optimization for performance tuning.'
     )
     
-    parser.add_argument(
-        '--list-optimization-strategies',
-        action='store_true',
-        help='List available optimization strategies with descriptions and exit (Phase 6.5)'
-    )
     
     # Phase 7.1: Dynamic weight adaptation
     parser.add_argument(
@@ -265,42 +194,8 @@ def main():
              'Only used if --dynamic-weights is enabled.'
     )
 
-    # Algorithm selection
-    available_algos = OptimizerRegistry.list_algorithms()
-    parser.add_argument(
-        '--algorithm',
-        type=str,
-        default='greedy',
-        choices=available_algos,
-        help=f'Optimization algorithm (default: greedy). '
-             f'Available: {", ".join(available_algos)}'
-    )
-
-    parser.add_argument(
-        '--list-algorithms',
-        action='store_true',
-        help='List available optimization algorithms with descriptions and exit'
-    )
-
     args = parser.parse_args()
-    
-    # Handle --list-optimization-strategies flag
-    if args.list_optimization_strategies:
-        print_optimization_strategies()
-        sys.exit(0)
 
-    # Handle --list-algorithms flag
-    if args.list_algorithms:
-        print("\nAvailable Optimization Algorithms:")
-        print("=" * 60)
-        for name in OptimizerRegistry.list_algorithms():
-            info = OptimizerRegistry.get_algorithm_info(name)
-            det = "deterministic" if info['is_deterministic'] else "non-deterministic"
-            print(f"\n  {name}")
-            print(f"    {info['algorithm_name']} ({det})")
-        print()
-        sys.exit(0)
-    
     # Phase 8: Detect and report offline mode
     offline_mode = args.from_file is not None
     offline_metadata = None
@@ -477,7 +372,7 @@ def main():
         if level not in valid_levels:
             print(f"Error: Invalid optimization level '{level}'")
             print(f"Valid levels: {', '.join(sorted(valid_levels))}")
-            print("Use --list-optimization-strategies to see available strategies")
+            print("Valid levels: osd, host, pool")
             sys.exit(1)
     
     if not enabled_levels:
@@ -611,9 +506,8 @@ def main():
     # (each iteration = one swap), falling back to config max_iterations
     max_iterations = args.max_changes if args.max_changes is not None else config.get('optimization.max_iterations', 10000)
 
-    print(f"Algorithm: {args.algorithm}")
-    optimizer = OptimizerRegistry.get_optimizer(
-        args.algorithm,
+    print("Algorithm: greedy")
+    optimizer = GreedyOptimizer(
         target_cv=args.target_cv,
         max_iterations=max_iterations,
         scorer=scorer,

@@ -13,7 +13,6 @@ from typing import List, Tuple, Optional, Dict
 import copy
 
 from ..models import ClusterState
-from ..optimizers import OptimizerRegistry
 from ..optimizers.greedy import GreedyOptimizer
 from ..scorer import Scorer
 from .generator import generate_synthetic_cluster
@@ -124,8 +123,7 @@ def profile_optimization(
     
     # Run optimization
     optimize_start = time.time()
-    optimizer = OptimizerRegistry.get_optimizer(
-        algorithm,
+    optimizer = GreedyOptimizer(
         target_cv=target_cv,
         max_iterations=max_iterations,
         scorer=scorer,
@@ -267,47 +265,6 @@ def benchmark_scalability(
     
     return results
 
-
-def profile_hot_spots(
-    state: ClusterState,
-    target_cv: float = 0.10
-) -> Dict[str, float]:
-    """
-    Identify performance bottlenecks using basic timing.
-    
-    Note: For detailed profiling, use cProfile externally:
-        python -m cProfile -o output.prof -m ceph_primary_balancer.cli
-    
-    Args:
-        state: ClusterState to optimize
-        target_cv: Target CV
-        
-    Returns:
-        Dict of function/section names to execution times
-    """
-    timings = {}
-    
-    # Time data collection (already collected, so this is artificial)
-    start = time.time()
-    _ = copy.deepcopy(state)
-    timings['data_collection'] = time.time() - start
-    
-    # Time scorer initialization
-    start = time.time()
-    scorer = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
-    timings['scorer_init'] = time.time() - start
-    
-    # Time initial score calculation
-    start = time.time()
-    _ = scorer.calculate_score(state)
-    timings['initial_scoring'] = time.time() - start
-    
-    # Time optimization
-    start = time.time()
-    _ = GreedyOptimizer(target_cv=target_cv, max_iterations=1000, scorer=scorer).optimize(state)
-    timings['optimization'] = time.time() - start
-    
-    return timings
 
 
 def estimate_complexity(
