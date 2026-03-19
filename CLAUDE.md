@@ -221,8 +221,7 @@ Ceph added a native read (primary) balancer in Reef (v18, August 2023). It uses 
 | Dimension | Ceph built-in | ceph_primary_balancer |
 |---|---|---|
 | **Integration** | Native ceph-mgr module, runs automatically | External tool, requires manual invocation |
-| **OSD size awareness** | `osdsizeopt` mode accounts for heterogeneous hardware | Assumes homogeneous OSDs |
-| **Primary affinity** | Respects `primary_affinity` per-OSD settings | Does not consider primary affinity |
+| **Primary affinity** | Respects `primary_affinity` per-OSD settings | Does not consider primary affinity (see Known Limitations) |
 | **Client requirement** | Built-in, ships with Ceph | Separate install, Python 3.8+ |
 
 **Key gap in Ceph's balancer — sparse pools are effectively ignored:**
@@ -239,10 +238,13 @@ By optimizing each pool independently, Ceph's balancer can create conflicts wher
 
 **Ideas worth adopting:**
 
-- **OSD size awareness:** We currently assume homogeneous OSDs. Ceph's `read_ratio`/`write_ratio` model for heterogeneous hardware is relevant for mixed-device clusters. Could be a future enhancement.
-- **Primary affinity:** Some operators set `primary_affinity=0` on specific OSDs (e.g., SSDs used only for journals, or OSDs being drained). We should respect this — currently we'd try to assign primaries to OSDs that the operator explicitly excluded.
+- **Primary affinity:** Some operators set `primary_affinity=0` on specific OSDs (e.g., OSDs being drained, slow hardware, or asymmetric workload roles). We should respect this — currently we'd try to assign primaries to OSDs that the operator explicitly excluded. See "Known Limitations" below.
 
 **Conclusion:** Our tool fills a genuine gap. Ceph's native read balancer is a single-dimension, per-pool greedy optimizer with no host awareness and no cross-pool coordination. For small homogeneous clusters with few pools, it works fine. For large clusters with many pools, heterogeneous host sizes, or sparse pool distributions — exactly the hard cases — our multi-dimensional approach with adaptive weights and structural floor awareness produces materially better results.
+
+### Known Limitations
+
+- **`primary_affinity` is assumed to be 1.0 for all OSDs.** Ceph allows operators to set `primary_affinity` per OSD (0.0–1.0) to control which OSDs are preferred as primaries. Common uses: draining an OSD, deprioritizing slow hardware, or asymmetric workload roles. This tool does not read or respect `primary_affinity` — it will assign primaries to OSDs with `primary_affinity=0` if they appear in acting sets. Operators using non-default `primary_affinity` should review generated scripts before applying.
 
 ### Cleanup
 - **`_check_termination()` redundancy** — `base.py:_check_termination()` recalculates OSD/host/pool stats that are already available from the cached `ScoreComponents`. Should accept pre-computed components.
