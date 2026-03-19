@@ -9,11 +9,10 @@ that need it most.
 Phase 7.1: Dynamic Weight Optimization
 """
 
-from typing import List, Tuple, Optional, Dict, Any
-from .scorer import Scorer
+from typing import Dict, List, Tuple, Optional, Any
+from .scorer import Scorer, _osd_cv_floor
 from .models import ClusterState
 from .analyzer import calculate_statistics
-from .scorer import _osd_cv_floor
 from .weight_strategies import get_strategy
 
 
@@ -179,59 +178,25 @@ class DynamicScorer(Scorer):
         self.weight_history.append((self.w_osd, self.w_host, self.w_pool))
     
     def _calculate_current_cvs(self, state: ClusterState) -> Tuple[float, float, float]:
-        """
-        Calculate current CV for each dimension.
+        """Calculate current CV for each dimension."""
+        from .analyzer import calculate_weighted_avg_pool_cv
 
-        Args:
-            state: Current ClusterState
-
-        Returns:
-            Tuple of (osd_cv, host_cv, pool_cv)
-        """
-        
-        # Calculate OSD CV
         osd_cv = 0.0
         if state.osds and 'osd' in self.enabled_levels:
             osd_counts = [osd.primary_count for osd in state.osds.values()]
             if osd_counts:
-                osd_stats = calculate_statistics(osd_counts)
-                osd_cv = osd_stats.cv
-        
-        # Calculate Host CV
+                osd_cv = calculate_statistics(osd_counts).cv
+
         host_cv = 0.0
         if state.hosts and 'host' in self.enabled_levels:
-            host_counts = [host.primary_count for host in state.hosts.values()]
+            host_counts = [h.primary_count for h in state.hosts.values()]
             if host_counts:
-                host_stats = calculate_statistics(host_counts)
-                host_cv = host_stats.cv
-        
-        # Calculate Pool CV (PG-weighted average across pools, excluding unbalanceable)
+                host_cv = calculate_statistics(host_counts).cv
+
         pool_cv = 0.0
         if state.pools and 'pool' in self.enabled_levels:
-            from .scorer import _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
-            weighted_sum = 0.0
-            total_w = 0
-            for pool_id, pool in state.pools.items():
-                # Skip pools too sparse to balance
-                n_part = len(pool.participating_osds) if pool.participating_osds else len(pool.primary_counts)
-                if _pool_cv_floor(pool.pg_count, n_part) > UNBALANCEABLE_CV_FLOOR:
-                    continue
+            pool_cv = calculate_weighted_avg_pool_cv(state)
 
-                pool_pgs = [pg for pg in state.pgs.values() if pg.pool_id == pool_id]
-                if pool_pgs:
-                    osd_counts_in_pool: Dict[int, int] = {}
-                    for pg in pool_pgs:
-                        osd_counts_in_pool[pg.primary] = osd_counts_in_pool.get(pg.primary, 0) + 1
-
-                    if osd_counts_in_pool:
-                        pool_stats = calculate_statistics(list(osd_counts_in_pool.values()))
-                        w = max(pool.pg_count, 1)
-                        weighted_sum += pool_stats.cv * w
-                        total_w += w
-
-            if total_w > 0:
-                pool_cv = weighted_sum / total_w
-        
         return (osd_cv, host_cv, pool_cv)
     
     def get_weight_history(self) -> List[Tuple[float, float, float]]:
