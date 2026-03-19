@@ -172,19 +172,84 @@ Features added after the algorithmic core stabilized:
 
 Potential improvements, roughly ordered by impact:
 
-### Performance
-- **Focused fallback is exhaustive** — `find_best_focused_swap()` evaluates every PG in the cluster with two scorer calls each. At 500+ OSDs this dominates runtime when the optimizer stalls. Sampling a subset or early-exit-on-good-enough would cut stall iterations significantly.
-- **Scorer object recreated per iteration** — `find_best_focused_swap()` creates a new `Scorer` with focus weights on every call. Could be cached and reused.
+### Research — DONE
 
-### Algorithm quality
-- **Per-dimension termination targets** — a single `target_cv` for all dimensions is a mismatch. OSD can reach 0.01, but pool CV has a structural floor of 0.15-0.30 for sparse clusters. Per-dimension targets (`--target-cv-osd`, `--target-cv-pool`) would let users express realistic goals.
+#### Comparison with Ceph's built-in read balancer
 
-### Research
-- **Compare with Ceph's built-in upmap read balancer** — Ceph has a native `osd_read_balance` / upmap read balancer (added in Reef). Compare algorithmic strategies: how it identifies imbalance, what scoring/termination it uses, whether it operates per-pool or globally, and how it handles sparse pools. Identify where our approach diverges and whether there are ideas worth adopting or pitfalls to avoid.
+Ceph added a native read (primary) balancer in Reef (v18, August 2023). It uses `pg-upmap-primary` — the same mechanism we use. Two modes: `read` (primary-only) and `upmap-read` (combines capacity + primary balancing). Reef only had the offline path (`osdmaptool --read`); the automatic online balancer mode was added in Squid (v19, 2024). Note: the Linux kernel client still does not support `pg-upmap-primary` as of late 2025 — kernel-based RBD and CephFS mounts will fail if these mappings exist.
+
+**How Ceph's read balancer works (from OSDMap.cc source):**
+
+1. **Architecture:** Python mgr module (`balancer/module.py`) is just an orchestrator — iterates pools and calls `OSDMap::balance_primaries()` in C++ once per pool. All algorithmic work is in C++.
+
+2. **Scoring:** `read_balance_score = max_primaries_on_any_osd / avg_primaries_per_osd` (RBS_FAIR mode). A ratio where 1.0 = perfect. This is a per-pool minimax metric — it only looks at the single most overloaded OSD, not the distribution shape. Sensitive to outliers rather than overall spread.
+
+3. **Optimal score floor:** `ceil(PGs / OSDs) / (PGs / OSDs)`. For 32 PGs across 10 OSDs: `ceil(3.2) / 3.2 = 1.25`. Acknowledges the integer constraint but only at the single-OSD level.
+
+4. **Desired distribution:** For each OSD: `desired = (pgs_on_osd / replica_count) * primary_affinity`, then scaled so the sum equals `pg_num`. The deviation score is `actual_primaries - desired_primaries` (positive = donor, negative = receiver).
+
+5. **Swap loop:** Multi-pass greedy. Each pass iterates ALL PGs in the pool. For each PG, considers each OSD in the acting set. A swap is taken only when `(prim_score - potential_score) > 1` — the combined deviation gap must exceed 1.0. Scores are updated incrementally after each swap within a pass. The loop terminates when a full pass produces zero swaps.
+
+6. **Safety net:** After all swaps, recalculates `read_balance_score`. If the score did NOT improve, **all mappings are discarded**.
+
+7. **The `> 1` guard is critical for sparse pools:** When most OSDs have 0-1 primaries in a pool (the sparse case), deviation scores cluster near 0. The `(prim_score - potential_score) > 1` condition means almost no swaps qualify. The algorithm effectively gives up on sparse pools — exactly where balancing is hardest.
+
+8. **Scope:** Operates **per-pool independently**. The Python module iterates pools sequentially. No cross-pool awareness, no global OSD load tracking, no coordination between pools.
+
+9. **First-viable vs best-swap:** Takes the first beneficial swap found in PG iteration order, not the best swap. Suboptimal convergence compared to evaluating all candidates.
+
+10. **Size-aware variant:** `calc_desired_prims_for_osdsizeopt` (RB_OSDSIZEOPT mode) accounts for heterogeneous OSD sizes using a `read_ratio`/`write_ratio` IO model. Technology preview status.
+
+**Where our approach is stronger:**
+
+| Dimension | Ceph built-in | ceph_primary_balancer |
+|---|---|---|
+| **Scoring metric** | Max-deviation ratio (single worst OSD) | CV across all OSDs (distribution shape) |
+| **Dimensions** | OSD-level only | OSD + host + pool (3-dimensional) |
+| **Host awareness** | None — no host-level balancing | Explicit host CV dimension with cross-host tie-breaking |
+| **Cross-pool optimization** | Per-pool independently | Global optimization with per-pool donor/receiver identification |
+| **Adaptive weights** | None | DynamicScorer with target_distance and two_phase strategies |
+| **Swap selection** | First viable swap in PG iteration order | Best swap via scored evaluation of all candidates |
+| **Local minima escape** | None — stops when no single swap improves | Three-tier search + focused fallback with regression limits |
+| **Structural floor awareness** | Optimal score floor (single OSD) | Per-pool CV floor + unbalanceable pool exclusion |
+| **Stagnation detection** | None — terminates when zero swaps in a full pass | Rolling window + per-dimension plateau tracking |
+| **Sparse pool handling** | `> 1` guard effectively disables balancing | Adaptive ±1 thresholds for small pools, CV floor margin |
+| **Termination safety** | Discards all changes if score didn't improve | Incremental — each swap is independently validated |
+
+**Where Ceph's approach has advantages:**
+
+| Dimension | Ceph built-in | ceph_primary_balancer |
+|---|---|---|
+| **Integration** | Native ceph-mgr module, runs automatically | External tool, requires manual invocation |
+| **Primary affinity** | Respects `primary_affinity` per-OSD settings | Does not consider primary affinity (see Known Limitations) |
+| **Client requirement** | Built-in, ships with Ceph | Separate install, Python 3.8+ |
+
+**Key gap in Ceph's balancer — sparse pools are effectively ignored:**
+
+The `(prim_score - potential_score) > 1` guard in the swap loop means a swap only fires when the combined deviation gap exceeds 1.0. In sparse pools (e.g., 32 PGs across 100 OSDs), most OSDs have 0-1 primaries and deviation scores cluster near 0. Almost no swaps qualify, so the algorithm does very little. Our approach handles this via adaptive ±1 donor/receiver thresholds and per-pool CV floor estimation that recognizes the structural limit and works within it.
+
+**Key gap in Ceph's balancer — no host-level awareness:**
+
+Ceph tracker issue #42321 (the original feature request, still "Fix Under Review" as of 2024) explicitly noted that the read balancer "balanced OSDs within nodes effectively, but significant imbalances persisted between different hosts." This is exactly the problem our host CV dimension solves. Ceph's read balancer optimizes per-OSD primary counts but has no concept of host-level, rack-level, or any failure-domain-level primary distribution. In a cluster where hosts have different numbers of OSDs, perfectly balanced per-OSD counts can still produce heavily imbalanced per-host read load.
+
+**Key gap in Ceph's balancer — no cross-pool coordination:**
+
+By optimizing each pool independently, Ceph's balancer can create conflicts where balancing pool A worsens the global OSD distribution. Our approach optimizes all pools simultaneously with a weighted composite score, so improving pool CV doesn't come at the cost of OSD or host balance.
+
+**Ideas worth adopting:**
+
+- **Primary affinity:** Some operators set `primary_affinity=0` on specific OSDs (e.g., OSDs being drained, slow hardware, or asymmetric workload roles). We should respect this — currently we'd try to assign primaries to OSDs that the operator explicitly excluded. See "Known Limitations" below.
+
+**Conclusion:** Our tool fills a genuine gap. Ceph's native read balancer is a single-dimension, per-pool greedy optimizer with no host awareness and no cross-pool coordination. For small homogeneous clusters with few pools, it works fine. For large clusters with many pools, heterogeneous host sizes, or sparse pool distributions — exactly the hard cases — our multi-dimensional approach with adaptive weights and structural floor awareness produces materially better results.
+
+### Known Limitations
+
+- **`primary_affinity` is assumed to be 1.0 for all OSDs.** Ceph allows operators to set `primary_affinity` per OSD (0.0–1.0) to control which OSDs are preferred as primaries. Common uses: draining an OSD, deprioritizing slow hardware, or asymmetric workload roles. This tool does not read or respect `primary_affinity` — it will assign primaries to OSDs with `primary_affinity=0` if they appear in acting sets. Operators using non-default `primary_affinity` should review generated scripts before applying.
 
 ### Cleanup
 - **`_check_termination()` redundancy** — `base.py:_check_termination()` recalculates OSD/host/pool stats that are already available from the cached `ScoreComponents`. Should accept pre-computed components.
 - **`_record_iteration()` fallback** — `base.py:_record_iteration()` calls `calculate_score()` when no pre-computed score is passed. The greedy optimizer always passes a score, but the fallback path exists. Could be simplified.
+- **Remove `target_cv` plumbing** — `target_cv` defaults to 0.01, which is low enough that stagnation detection always terminates the optimizer before the CV target is reached. No realistic scenario benefits from a higher value. Hardcode 0.01 (or a module constant) and remove the flag from CLI args, config parsing, optimizer constructors, DynamicScorer, weight strategies, and benchmark infrastructure.
 
 ## Code Style
 
