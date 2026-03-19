@@ -95,11 +95,6 @@ class SwapProposal:
     old_primary: int                # Current primary OSD
     new_primary: int                # Proposed new primary OSD
     score_improvement: float        # Expected score improvement (variance reduction or composite)
-    # Backward compatibility: variance_improvement is alias for score_improvement
-    @property
-    def variance_improvement(self) -> float:
-        """Alias for score_improvement to maintain backward compatibility."""
-        return self.score_improvement
 
 
 @dataclass

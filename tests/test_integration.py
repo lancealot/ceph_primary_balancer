@@ -16,7 +16,8 @@ from unittest.mock import patch, MagicMock
 from typing import List
 
 from ceph_primary_balancer import collector, analyzer
-from ceph_primary_balancer.optimizers.greedy import calculate_variance, GreedyOptimizer
+from ceph_primary_balancer.optimizers.greedy import GreedyOptimizer
+from ceph_primary_balancer.analyzer import calculate_statistics
 from ceph_primary_balancer.models import ClusterState, SwapProposal
 
 
@@ -124,7 +125,7 @@ class TestIntegration(unittest.TestCase):
                               "Initial CV should be > 10% to demonstrate imbalance")
             
             # Store initial variance for comparison
-            initial_variance = calculate_variance(state.osds)
+            initial_variance = calculate_statistics([o.primary_count for o in state.osds.values()]).std_dev ** 2
             
             # Step 4: Run optimization
             print(f"\nRunning optimization (target CV: 10%)...")
@@ -133,7 +134,7 @@ class TestIntegration(unittest.TestCase):
             # Step 5: Verify improvement
             final_counts = [osd.primary_count for osd in state.osds.values()]
             final_stats = analyzer.calculate_statistics(final_counts)
-            final_variance = calculate_variance(state.osds)
+            final_variance = calculate_statistics([o.primary_count for o in state.osds.values()]).std_dev ** 2
             
             print(f"\nFinal Statistics:")
             print(f"  Mean:    {final_stats.mean:.1f} primaries/OSD")
@@ -176,7 +177,7 @@ class TestIntegration(unittest.TestCase):
                                   f"Swap {i}: Cannot swap to the same OSD")
                 
                 # Verify variance improvement is positive
-                self.assertGreater(swap.variance_improvement, 0,
+                self.assertGreater(swap.score_improvement, 0,
                                  f"Swap {i}: Should have positive variance improvement")
             
             print(f"✓ All {len(swaps)} swaps are valid")

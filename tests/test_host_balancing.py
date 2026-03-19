@@ -213,17 +213,14 @@ def test_multi_dimensional_scoring():
     print("✓ Multi-dimensional scoring test passed")
 
 
-def test_swap_proposal_backward_compatibility():
-    """Test that SwapProposal maintains backward compatibility with variance_improvement."""
+def test_swap_proposal_score_improvement():
+    """Test that SwapProposal records score_improvement."""
     swap = SwapProposal(
         pgid="1.0",
         old_primary=0,
         new_primary=1,
         score_improvement=10.5
     )
-    
-    # Test backward compatibility property
-    assert swap.variance_improvement == 10.5, "variance_improvement should alias score_improvement"
     assert swap.score_improvement == 10.5
     
     print("✓ SwapProposal backward compatibility test passed")

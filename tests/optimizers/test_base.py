@@ -1,7 +1,7 @@
 """
 Tests for base optimizer interface and registry.
 
-Tests the OptimizerBase abstract class, OptimizerRegistry, and OptimizerStats
+Tests the OptimizerBase abstract class and OptimizerStats
 to ensure the Phase 7 architecture is working correctly.
 """
 
@@ -10,7 +10,6 @@ from typing import List
 
 from ceph_primary_balancer.optimizers.base import (
     OptimizerBase,
-    OptimizerRegistry,
     OptimizerStats
 )
 from ceph_primary_balancer.models import ClusterState, SwapProposal
@@ -175,99 +174,6 @@ class TestOptimizerBase(unittest.TestCase):
         self.assertIn('swaps_evaluated', stats)
         self.assertIn('swaps_applied', stats)
 
-
-class TestOptimizerRegistry(unittest.TestCase):
-    """Test OptimizerRegistry."""
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        # Save and clear registry before each test
-        self._saved_algorithms = dict(OptimizerRegistry._algorithms)
-        OptimizerRegistry._algorithms.clear()
-
-    def tearDown(self):
-        """Clean up after tests."""
-        # Restore registry after each test
-        OptimizerRegistry._algorithms.clear()
-        OptimizerRegistry._algorithms.update(self._saved_algorithms)
-    
-    def test_register_optimizer(self):
-        """Test registering an optimizer."""
-        OptimizerRegistry.register('dummy', DummyOptimizer)
-        
-        self.assertIn('dummy', OptimizerRegistry._algorithms)
-        self.assertEqual(OptimizerRegistry._algorithms['dummy'], DummyOptimizer)
-    
-    def test_register_non_optimizer_raises_error(self):
-        """Test that registering non-optimizer class raises error."""
-        class NotAnOptimizer:
-            pass
-        
-        with self.assertRaises(TypeError):
-            OptimizerRegistry.register('bad', NotAnOptimizer)
-    
-    def test_get_optimizer(self):
-        """Test getting optimizer instance from registry."""
-        OptimizerRegistry.register('dummy', DummyOptimizer)
-        
-        optimizer = OptimizerRegistry.get_optimizer('dummy', target_cv=0.08)
-        
-        self.assertIsInstance(optimizer, DummyOptimizer)
-        self.assertEqual(optimizer.target_cv, 0.08)
-    
-    def test_get_unknown_optimizer_raises_error(self):
-        """Test that getting unknown optimizer raises error."""
-        with self.assertRaises(ValueError) as context:
-            OptimizerRegistry.get_optimizer('unknown')
-        
-        self.assertIn('Unknown algorithm', str(context.exception))
-        self.assertIn('unknown', str(context.exception))
-    
-    def test_list_algorithms(self):
-        """Test listing registered algorithms."""
-        OptimizerRegistry.register('dummy1', DummyOptimizer)
-        OptimizerRegistry.register('dummy2', NonDeterministicDummyOptimizer)
-        
-        algorithms = OptimizerRegistry.list_algorithms()
-        
-        self.assertIsInstance(algorithms, list)
-        self.assertEqual(len(algorithms), 2)
-        self.assertIn('dummy1', algorithms)
-        self.assertIn('dummy2', algorithms)
-        # Should be sorted
-        self.assertEqual(algorithms, sorted(algorithms))
-    
-    def test_list_algorithms_empty(self):
-        """Test listing algorithms when registry is empty."""
-        algorithms = OptimizerRegistry.list_algorithms()
-        
-        self.assertIsInstance(algorithms, list)
-        self.assertEqual(len(algorithms), 0)
-    
-    def test_get_algorithm_info(self):
-        """Test getting algorithm information."""
-        OptimizerRegistry.register('dummy', DummyOptimizer)
-        
-        info = OptimizerRegistry.get_algorithm_info('dummy')
-        
-        self.assertIsInstance(info, dict)
-        self.assertEqual(info['name'], 'dummy')
-        self.assertEqual(info['class'], 'DummyOptimizer')
-        self.assertEqual(info['algorithm_name'], 'Dummy Test Optimizer')
-        self.assertTrue(info['is_deterministic'])
-    
-    def test_get_algorithm_info_unknown_raises_error(self):
-        """Test that getting info for unknown algorithm raises error."""
-        with self.assertRaises(ValueError):
-            OptimizerRegistry.get_algorithm_info('unknown')
-    
-    def test_registry_is_class_level(self):
-        """Test that registry is shared at class level."""
-        OptimizerRegistry.register('dummy', DummyOptimizer)
-        
-        # Should be accessible from different calls
-        self.assertIn('dummy', OptimizerRegistry._algorithms)
-        self.assertEqual(len(OptimizerRegistry.list_algorithms()), 1)
 
 
 class TestOptimizerBaseHelpers(unittest.TestCase):

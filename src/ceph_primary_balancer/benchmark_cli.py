@@ -20,21 +20,16 @@ from .benchmark.runner import BenchmarkSuite, RegressionDetector
 from .benchmark.reporter import TerminalReporter, JSONReporter, SimpleHTMLReporter
 from .benchmark.generator import generate_synthetic_cluster, save_test_dataset
 from .benchmark.profiler import quick_benchmark
-from .optimizers import OptimizerRegistry
+from .optimizers import GreedyOptimizer
 from .analyzer import calculate_statistics
 
 
-def _algo_choices():
-    return OptimizerRegistry.list_algorithms()
-
-
 def _add_algorithm_arg(parser):
-    """Add --algorithm argument to a subparser."""
+    """Add --algorithm argument to a subparser (kept for interface compat)."""
     parser.add_argument(
         '--algorithm', type=str, default='greedy',
-        choices=_algo_choices(),
-        help=f'Optimization algorithm (default: greedy). '
-             f'Available: {", ".join(_algo_choices())}'
+        choices=['greedy'],
+        help='Optimization algorithm (default: greedy)'
     )
 
 
@@ -241,13 +236,12 @@ def cmd_compare_algorithms(args):
 
     results = {}
     for algo in algorithms:
-        if algo not in _algo_choices():
+        if algo != 'greedy':
             print(f"  Unknown algorithm: {algo}, skipping")
             continue
 
         state_copy = copy.deepcopy(base_state)
-        optimizer = OptimizerRegistry.get_optimizer(
-            algo,
+        optimizer = GreedyOptimizer(
             target_cv=args.target_cv,
             max_iterations=args.max_iterations,
         )

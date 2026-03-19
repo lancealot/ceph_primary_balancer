@@ -152,7 +152,7 @@ class TestWeightUpdateLogic:
     
     def test_updates_at_correct_intervals(self):
         """Test that weights update at specified intervals."""
-        scorer = DynamicScorer(strategy='proportional', update_interval=5)
+        scorer = DynamicScorer(strategy='target_distance', update_interval=5)
         state = create_simple_cluster_state()
         
         # First call (iteration 0) should trigger update

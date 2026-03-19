@@ -22,7 +22,6 @@ from .profiler import (
 from .quality_analyzer import (
     analyze_balance_quality,
     analyze_convergence,
-    analyze_stability,
     BalanceQualityMetrics,
     ConvergenceMetrics,
     StabilityMetrics
@@ -260,44 +259,6 @@ class BenchmarkSuite:
                   f"{metric.num_osds} OSDs, {metric.num_pgs} PGs → "
                   f"{metric.execution_time:.2f}s, "
                   f"{metric.peak_memory_mb:.1f} MB")
-        
-        return results
-    
-    def run_stability_benchmarks(self) -> Dict[str, StabilityMetrics]:
-        """
-        Test solution stability and determinism.
-        
-        Returns:
-            Dict mapping scenario name to StabilityMetrics
-        """
-        results = {}
-        num_runs = self.config.get('stability_runs', 10)
-        
-        # Use a subset of scenarios for stability testing
-        test_scenarios = ['small_quick']
-        
-        for scenario_name in test_scenarios:
-            try:
-                print(f"  - Running: {scenario_name} ({num_runs} runs)...", end=' ')
-                scenario = get_scenario_by_name(scenario_name)
-                
-                # Generate cluster
-                state = self._generate_cluster_from_scenario(scenario)
-                
-                # Analyze stability
-                stability = analyze_stability(
-                    state=state,
-                    num_runs=num_runs,
-                    target_cv=self.config.get('target_cv', 0.10),
-                    max_iterations=self.config.get('max_iterations', 1000)
-                )
-                
-                results[scenario_name] = stability
-                print(f"✓ (Determinism: {stability.determinism_score:.1f}/100)")
-                
-            except Exception as e:
-                print(f"✗ Error: {e}")
-                continue
         
         return results
     

@@ -137,86 +137,6 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         
         print("✓ Dynamic weights optimization successful")
     
-    def test_dynamic_weights_proportional_strategy(self):
-        """
-        Test optimization with proportional weight strategy.
-        
-        Validates:
-        - Proportional strategy works correctly
-        - Weights are proportional to CV values
-        - Optimization still converges
-        """
-        with patch.object(collector, 'run_ceph_command', side_effect=self.mock_run_ceph_command):
-            state = collector.build_cluster_state()
-        
-        initial_counts = [osd.primary_count for osd in state.osds.values()]
-        initial_stats = analyzer.calculate_statistics(initial_counts)
-        
-        print("\n" + "=" * 70)
-        print("TEST: Proportional Weight Strategy")
-        print("=" * 70)
-        print(f"Initial CV: {initial_stats.cv:.2%}")
-        
-        # Run with proportional strategy
-        swaps = GreedyOptimizer(
-            target_cv=0.10,
-            max_iterations=500,
-            dynamic_weights=True,
-            dynamic_strategy='proportional',
-            weight_update_interval=10,
-        ).optimize(state)
-        
-        final_counts = [osd.primary_count for osd in state.osds.values()]
-        final_stats = analyzer.calculate_statistics(final_counts)
-        
-        print(f"Final CV: {final_stats.cv:.2%}")
-        print(f"Swaps performed: {len(swaps)}")
-        
-        self.assertGreater(len(swaps), 0, "Should have found swaps")
-        self.assertLess(final_stats.cv, initial_stats.cv, "Should improve")
-        
-        print("✓ Proportional strategy works")
-    
-    def test_dynamic_weights_adaptive_hybrid_strategy(self):
-        """
-        Test optimization with adaptive hybrid weight strategy.
-        
-        Validates:
-        - Adaptive hybrid strategy works correctly
-        - Improvement tracking and smoothing functions properly
-        - Optimization still converges
-        """
-        with patch.object(collector, 'run_ceph_command', side_effect=self.mock_run_ceph_command):
-            state = collector.build_cluster_state()
-        
-        initial_counts = [osd.primary_count for osd in state.osds.values()]
-        initial_stats = analyzer.calculate_statistics(initial_counts)
-        
-        print("\n" + "=" * 70)
-        print("TEST: Adaptive Hybrid Weight Strategy")
-        print("=" * 70)
-        print(f"Initial CV: {initial_stats.cv:.2%}")
-        
-        # Run with adaptive_hybrid strategy
-        swaps = GreedyOptimizer(
-            target_cv=0.10,
-            max_iterations=500,
-            dynamic_weights=True,
-            dynamic_strategy='adaptive_hybrid',
-            weight_update_interval=10,
-        ).optimize(state)
-        
-        final_counts = [osd.primary_count for osd in state.osds.values()]
-        final_stats = analyzer.calculate_statistics(final_counts)
-        
-        print(f"Final CV: {final_stats.cv:.2%}")
-        print(f"Swaps performed: {len(swaps)}")
-        
-        self.assertGreater(len(swaps), 0, "Should have found swaps")
-        self.assertLess(final_stats.cv, initial_stats.cv, "Should improve")
-        
-        print("✓ Adaptive hybrid strategy works")
-    
     def test_dynamic_weights_vs_fixed_weights(self):
         """
         Compare dynamic weights vs fixed weights performance.
@@ -300,7 +220,7 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
                 "target_cv": 0.10,
                 "max_iterations": 1000,
                 "dynamic_weights": True,
-                "dynamic_strategy": "proportional",
+                "dynamic_strategy": "two_phase",
                 "weight_update_interval": 15
             },
             "scoring": {
@@ -326,8 +246,8 @@ class TestDynamicWeightsIntegration(unittest.TestCase):
         self.assertTrue(config.get('optimization.dynamic_weights', False),
                        "Should load dynamic_weights=True")
         self.assertEqual(config.get('optimization.dynamic_strategy', 'target_distance'),
-                        'proportional',
-                        "Should load proportional strategy")
+                        'two_phase',
+                        "Should load two_phase strategy")
         self.assertEqual(config.get('optimization.weight_update_interval', 10),
                         15,
                         "Should load interval=15")

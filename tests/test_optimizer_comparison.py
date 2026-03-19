@@ -20,7 +20,7 @@ from typing import Dict, Any, List
 import pytest
 
 from ceph_primary_balancer.benchmark.generator import generate_multi_pool_scenario
-from ceph_primary_balancer.optimizers import OptimizerRegistry
+from ceph_primary_balancer.optimizers import GreedyOptimizer
 from ceph_primary_balancer.analyzer import calculate_statistics, get_pool_statistics_summary
 
 
@@ -72,13 +72,12 @@ POOLS_CONFIG = [
     {"pgs": 64,  "replication": 11, "imbalance_cv": 0.35, "pattern": "bimodal"},
 ]
 
-ALGORITHMS = ["greedy", "batch_greedy"]
+ALGORITHMS = ["greedy"]
 
 WEIGHT_CONFIGS = [
     {"name": "static_default", "dynamic_weights": False},
-    {"name": "dyn_proportional", "dynamic_weights": True, "dynamic_strategy": "proportional"},
     {"name": "dyn_target_distance", "dynamic_weights": True, "dynamic_strategy": "target_distance"},
-    {"name": "dyn_adaptive_hybrid", "dynamic_weights": True, "dynamic_strategy": "adaptive_hybrid"},
+    {"name": "dyn_two_phase", "dynamic_weights": True, "dynamic_strategy": "two_phase"},
 ]
 
 
@@ -120,10 +119,7 @@ def run_optimizer(state, algorithm: str, weight_cfg: dict) -> Dict[str, Any]:
         kwargs["dynamic_strategy"] = weight_cfg["dynamic_strategy"]
         kwargs["weight_update_interval"] = 10
 
-    if algorithm == "batch_greedy":
-        kwargs["batch_size"] = 10
-
-    optimizer = OptimizerRegistry.get_optimizer(algorithm, **kwargs)
+    optimizer = GreedyOptimizer(**kwargs)
 
     t0 = time.time()
     swaps = optimizer.optimize(state_copy)
