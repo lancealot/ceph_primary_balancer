@@ -711,16 +711,14 @@ class GreedyOptimizer(OptimizerBase):
             apply_swap(state, swap)
             swaps.append(swap)
 
+            # Compute post-swap components ONCE — used for both
+            # _record_iteration (score trajectory) and stagnation detection.
+            stag_components = self.scorer.calculate_score_with_components(state)
+
             # Update statistics
             self.stats.swaps_evaluated += 1  # In greedy, evaluated = applied
             self.stats.swaps_applied += 1
-            self._record_iteration(state)
-
-            # Global stagnation detection: if NO dimension above target has
-            # improved over a window of iterations, stop.  Per-dimension
-            # tracking prevents premature stopping when one dimension stalls
-            # at its floor while others are still converging.
-            stag_components = self.scorer.calculate_score_with_components(state)
+            self._record_iteration(state, score=stag_components.total)
             stag_dim_cvs: Dict[str, float] = {}
             if 'osd' in self.scorer.enabled_levels:
                 stag_dim_cvs['osd'] = stag_components.osd_cv
