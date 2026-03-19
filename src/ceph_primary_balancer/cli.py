@@ -377,8 +377,8 @@ def main():
     
     # Apply configuration values with CLI override precedence
     # CLI args > config file > defaults
-    if args.target_cv == 0.10:  # Default value, check config
-        args.target_cv = config.get('optimization.target_cv', 0.10)
+    if args.target_cv == 0.01:  # Default value, check config
+        args.target_cv = config.get('optimization.target_cv', 0.01)
     
     if args.weight_osd == 0.5:  # Default value
         args.weight_osd = config.get('scoring.weights.osd', 0.5)
