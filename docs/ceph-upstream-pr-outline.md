@@ -117,13 +117,25 @@ The Python module already iterates pools sequentially. The change:
 
 #### `src/osd/OSDMap.cc`
 
-- Add an optional `global_osd_load` parameter to `balance_primaries()`:
+- Add an optional `global_osd_load` parameter to `balance_primaries()`.
+  Current signature:
   ```cpp
   int OSDMap::balance_primaries(
-      int64_t pool_id,
+      CephContext *cct,
+      int64_t pid,
+      Incremental *pending_inc,
       OSDMap& tmp_osd_map,
-      std::optional<std::map<int,int>> global_osd_load = std::nullopt
-  );
+      const std::optional<rb_policy>& rbp = std::nullopt) const;
+  ```
+  Proposed addition:
+  ```cpp
+  int OSDMap::balance_primaries(
+      CephContext *cct,
+      int64_t pid,
+      Incremental *pending_inc,
+      OSDMap& tmp_osd_map,
+      const std::optional<rb_policy>& rbp = std::nullopt,
+      std::optional<std::map<int,int>> global_osd_load = std::nullopt) const;
   ```
 
 - In the swap evaluation, add a penalty for swaps that would increase
@@ -212,8 +224,8 @@ The Python module already iterates pools sequentially. The change:
   host-awareness.
 - Tests are expected. `make check` must pass. The `qa/` integration
   tests use teuthology.
-- The balancer module has its own tests in
-  `src/pybind/mgr/balancer/tests/`.
+- Functional tests live in `qa/standalone/mgr/balancer.sh`.
+  Unit tests for OSDMap in `src/test/osd/TestOSDMap.cc`.
 
 ### Risk assessment
 
