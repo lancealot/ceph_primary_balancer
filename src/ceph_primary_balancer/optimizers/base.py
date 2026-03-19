@@ -211,20 +211,22 @@ class OptimizerBase(ABC):
 
         return True
     
-    def _record_iteration(self, state: ClusterState):
+    def _record_iteration(self, state: ClusterState, score=None):
         """
         Record statistics for current iteration.
-        
+
         Args:
             state: Current cluster state
+            score: Pre-computed score (avoids redundant scorer call)
         """
         from ..analyzer import calculate_statistics
-        
+
         # Calculate current score and CV
-        score = self.scorer.calculate_score(state)
+        if score is None:
+            score = self.scorer.calculate_score(state)
         primary_counts = [osd.primary_count for osd in state.osds.values()]
         stats = calculate_statistics(primary_counts)
-        
+
         # Record trajectories
         self.stats.score_trajectory.append(score)
         self.stats.cv_trajectory.append(stats.cv)

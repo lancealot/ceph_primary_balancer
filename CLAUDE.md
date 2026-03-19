@@ -141,29 +141,34 @@ Multi-pool 60 OSD / 20            782  19.8s  0.301 → 0.007  0.105 → 0.001  
 ```
 All three dimensions improve simultaneously. Multi-dimension termination + per-pool search dramatically improved pool convergence (e.g., Multi-pool Pool CV: 0.377 → 0.190). Runtime increased for Large scenario due to more iterations; `max_iterations` caps this in production.
 
-### Phase 4: Pool CV convergence
-Pool CV remains the hardest dimension to converge. OSD and host reach floor quickly, but pool CV stalls well above target — especially for sparse clusters (many OSDs, few PGs per pool). Three complementary improvements, each independently valuable:
+### Phase 4: Pool CV convergence — DONE
+Pool CV is the hardest dimension to converge. OSD and host reach floor quickly, but pool CV stalls above target — especially for sparse clusters (many OSDs, few PGs per pool). Pool CV floor is structural: limited by acting set constraints (each PG can only choose primary from its ~3-member acting set) and integer primary counts. The `_pool_cv_floor` formula gives a theoretical lower bound; the true floor is higher due to acting set constraints.
 
-#### 4a. Two-phase weight strategy
-The `target_distance` dynamic strategy transitions weight toward pool too gradually — OSD/host are near their floor but still consuming 30%+ of weight. A hard cutover after OSD/host converge lets the optimizer spend its remaining iteration budget on pool CV.
+#### 4a. Two-phase weight strategy — DONE
+`TwoPhaseWeightStrategy` hard-switches from target_distance weights to pool-focused `(0.10, 0.05, 0.85)` when OSD and host CV both drop below `phase1_threshold`. Default threshold: `max(2 * target_cv, 0.15)` — the floor prevents the threshold from becoming uselessly low at small target_cv values.
 
-1. Add `TwoPhaseWeightStrategy` to `weight_strategies.py` — hard switch from OSD/host-focused weights `(0.55, 0.35, 0.10)` to pool-focused weights `(0.10, 0.05, 0.85)` when OSD and host CV both drop below `phase1_threshold` (default: `2x target_cv`). Register in `WeightStrategyFactory`.
-2. Add `TestTwoPhaseWeightStrategy` to `test_weight_strategies.py` — phase 1 behavior, phase 2 behavior, transition boundary, edge cases.
-3. Validate with benchmarks — compare `target_distance` vs `two_phase` on existing scenarios. Key metric: final pool CV at same iteration budget. No CLI changes needed (`--dynamic-strategy two_phase` works via factory).
+#### 4b. Per-pool candidate search improvements — DONE
+- CV floor margin tightened to 2% (`floor_cv * 1.02`)
+- `pool_pgs` index cached for the entire optimization run (pool membership never changes across swaps)
 
-#### 4b. Per-pool candidate search improvements
-The per-pool search in `find_best_pool_swap()` skips pools within 10% of their CV floor — too conservative for pools that still have viable swaps. The `pool_pgs` index is also rebuilt every iteration.
+#### 4c. Adaptive donor/receiver thresholds for small pools — DONE
+For pools with `1 <= mean < 10` primaries/OSD, `identify_pool_donors_receivers()` uses absolute ±1 threshold instead of percentage. Prevents dead zones where no OSDs qualify as donors/receivers in small pools.
 
-1. Relax the CV floor margin — use a tighter margin (e.g., 2% or absolute delta) so pools close to but not at floor are still searched.
-2. Cache the `pool_pgs` index across iterations, invalidating only when a swap changes pool membership.
-3. Benchmark impact on sparse scenarios (840 OSD / 30 pool).
+### Phase 5: Performance optimizations — DONE
+1. **Default target_cv: 0.10 → 0.01** — optimizer runs to swap exhaustion ("no beneficial swaps found") rather than stopping at an arbitrary target. Stagnation detection is the safety net.
+2. **Pre-swap ScoreComponents cached per iteration** — computed once, shared across `find_best_swap`, `find_best_pool_swap`, `find_best_focused_swap`, and stall detection. Eliminates 2-5 redundant O(pools) computations per iteration.
+3. **Post-swap components shared** — stagnation detection and `_record_iteration` share a single post-swap `calculate_score_with_components` call. Total scorer calls per iteration: 2 (down from 4-7).
+4. **DynamicScorer iteration counting fixed** — scorer iteration count now tracks actual iterations (2 per optimizer iteration) instead of being inflated 4-7×. Weight updates happen at the configured interval relative to real optimizer progress.
 
-#### 4c. Adaptive donor/receiver thresholds for small pools
-The fixed 10% donor/receiver threshold in `identify_pool_donors_receivers()` fails for small pools. With 5 primaries/OSD average, the threshold is 5.5 — almost no OSDs qualify as donors, starving the global search of pool-improving candidates.
-
-1. Use pool-size-adaptive thresholds: for pools with mean < 10 primaries/OSD, use absolute threshold (±1) instead of percentage.
-2. Add tests for small-pool donor/receiver identification.
-3. Benchmark impact on multi-pool scenarios.
+Live cluster results (832 OSDs, 30 hosts, 30 pools, 5232 PGs):
+```
+Dimension   Before    After   Improvement
+OSD CV      39.24%    7.66%      -80.5%
+Host CV      9.51%    0.39%      -95.9%
+Pool CV     67.80%   18.77%      -72.3%
+Swaps: 1081, Time: 218s, Termination: swap exhaustion
+```
+Pool CV floor (18.77%) is structural — 26/30 pools are sparse (too few PGs per OSD), 4 balanceable pools all converged to within 2% of their theoretical minimum.
 
 ## Code Style
 
