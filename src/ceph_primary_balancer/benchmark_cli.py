@@ -211,7 +211,7 @@ def cmd_quick(args):
 
 def cmd_compare_algorithms(args):
     """Run all algorithms on the same dataset and compare results."""
-    algorithms = args.algorithms.split(',') if args.algorithms else _algo_choices()
+    algorithms = args.algorithms.split(',') if args.algorithms else ['greedy']
 
     print(f"Comparing algorithms: {', '.join(algorithms)}")
     print(f"Cluster: {args.osds} OSDs, {args.pgs} PGs, imbalance CV={args.imbalance}")
@@ -338,7 +338,7 @@ def main():
                                            help='Compare optimization algorithms side-by-side')
     cmp_algo_parser.add_argument('--algorithms', type=str, default=None,
                                 help=f'Comma-separated list of algorithms to compare '
-                                     f'(default: all). Available: {", ".join(_algo_choices())}')
+                                     f'(default: all). Available: greedy')
     cmp_algo_parser.add_argument('--osds', type=int, default=50,
                                 help='Number of OSDs (default: 50)')
     cmp_algo_parser.add_argument('--pgs', type=int, default=3000,
