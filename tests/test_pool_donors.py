@@ -950,3 +950,43 @@ def test_pool_aware_optimization_improves_pool_cv():
         f"Pool-aware ({final_avg_pool_cv:.4f}) should beat "
         f"OSD-only ({osd_only_avg_pool_cv:.4f}) on pool CV"
     )
+
+
+def test_stagnation_continues_when_other_dimensions_improving():
+    """Stagnation should NOT trigger when one dimension stalls but others improve.
+
+    Creates a cluster where pool CV hits its floor quickly (sparse pools) but
+    OSD CV still has room to improve. The optimizer should continue working on
+    OSD rather than stopping because pool CV is stuck.
+    """
+    # Many OSDs, few PGs per pool → pool CV hits floor early, OSD CV has room
+    state = generate_synthetic_cluster(
+        num_osds=100, num_hosts=10, num_pools=3, pgs_per_pool=200,
+        replication_factor=3, imbalance_cv=0.40, seed=99,
+    )
+
+    from ceph_primary_balancer.analyzer import calculate_statistics
+
+    initial_osd_cv = calculate_statistics(
+        [osd.primary_count for osd in state.osds.values()]
+    ).cv
+
+    # Target unreachable for pool (sparse) but reachable for OSD
+    optimizer = GreedyOptimizer(
+        target_cv=0.02, max_iterations=1500,
+        enabled_levels=['osd', 'host', 'pool'],
+    )
+    swaps = optimizer.optimize(state)
+
+    final_osd_cv = calculate_statistics(
+        [osd.primary_count for osd in state.osds.values()]
+    ).cv
+
+    # OSD CV should have improved substantially — the optimizer didn't stop
+    # prematurely just because pool CV stalled
+    osd_improvement = (initial_osd_cv - final_osd_cv) / initial_osd_cv
+    assert osd_improvement > 0.50, (
+        f"OSD CV should have improved by >50% but only improved "
+        f"{osd_improvement:.1%} ({initial_osd_cv:.4f} -> {final_osd_cv:.4f}). "
+        f"Stagnation may have triggered prematurely."
+    )
