@@ -178,17 +178,27 @@ Potential improvements, roughly ordered by impact:
 
 Ceph added a native read (primary) balancer in Reef (v18, 2023). It uses `pg-upmap-primary` — the same mechanism we use. Two modes: `read` (primary-only) and `upmap-read` (combines capacity + primary balancing). Available both online (ceph-mgr balancer module) and offline (`osdmaptool --read`).
 
-**How Ceph's read balancer works:**
+**How Ceph's read balancer works (from OSDMap.cc source):**
 
-1. **Scoring:** `read_balance_score = max_primaries_on_any_osd / expected_primaries_for_that_osd`. A ratio where 1.0 = perfect. This is a per-pool max-deviation metric — it only looks at the single most overloaded OSD, not the distribution shape.
+1. **Architecture:** Python mgr module (`balancer/module.py`) is just an orchestrator — iterates pools and calls `OSDMap::balance_primaries()` in C++ once per pool. All algorithmic work is in C++.
 
-2. **Optimal score floor:** `ceil(PGs / OSDs) / (PGs / OSDs)`. For 32 PGs across 10 OSDs: `ceil(3.2) / 3.2 = 1.25`. Acknowledges the integer constraint but only at the single-OSD level.
+2. **Scoring:** `read_balance_score = max_primaries_on_any_osd / avg_primaries_per_osd` (RBS_FAIR mode). A ratio where 1.0 = perfect. This is a per-pool minimax metric — it only looks at the single most overloaded OSD, not the distribution shape. Sensitive to outliers rather than overall spread.
 
-3. **Algorithm:** Computes a `desired_primary_distribution` per OSD, then iterates over PGs looking for the most over-represented OSD (highest deviation above desired) and swaps primary to an under-represented OSD within that PG's acting set. Only swaps when `(prim_score - potential_score) > 1`.
+3. **Optimal score floor:** `ceil(PGs / OSDs) / (PGs / OSDs)`. For 32 PGs across 10 OSDs: `ceil(3.2) / 3.2 = 1.25`. Acknowledges the integer constraint but only at the single-OSD level.
 
-4. **Scope:** Operates **per-pool independently**. Each pool is balanced in isolation. No cross-pool optimization.
+4. **Desired distribution:** For each OSD: `desired = (pgs_on_osd / replica_count) * primary_affinity`, then scaled so the sum equals `pg_num`. The deviation score is `actual_primaries - desired_primaries` (positive = donor, negative = receiver).
 
-5. **Size-aware variant:** `calc_desired_prims_for_osdsizeopt` accounts for heterogeneous OSD sizes using a `read_ratio`/`write_ratio` IO model. Technology preview status.
+5. **Swap loop:** Multi-pass greedy. Each pass iterates ALL PGs in the pool. For each PG, considers each OSD in the acting set. A swap is taken only when `(prim_score - potential_score) > 1` — the combined deviation gap must exceed 1.0. Scores are updated incrementally after each swap within a pass. The loop terminates when a full pass produces zero swaps.
+
+6. **Safety net:** After all swaps, recalculates `read_balance_score`. If the score did NOT improve, **all mappings are discarded**.
+
+7. **The `> 1` guard is critical for sparse pools:** When most OSDs have 0-1 primaries in a pool (the sparse case), deviation scores cluster near 0. The `(prim_score - potential_score) > 1` condition means almost no swaps qualify. The algorithm effectively gives up on sparse pools — exactly where balancing is hardest.
+
+8. **Scope:** Operates **per-pool independently**. The Python module iterates pools sequentially. No cross-pool awareness, no global OSD load tracking, no coordination between pools.
+
+9. **First-viable vs best-swap:** Takes the first beneficial swap found in PG iteration order, not the best swap. Suboptimal convergence compared to evaluating all candidates.
+
+10. **Size-aware variant:** `calc_desired_prims_for_osdsizeopt` (RB_OSDSIZEOPT mode) accounts for heterogeneous OSD sizes using a `read_ratio`/`write_ratio` IO model. Technology preview status.
 
 **Where our approach is stronger:**
 
@@ -199,10 +209,12 @@ Ceph added a native read (primary) balancer in Reef (v18, 2023). It uses `pg-upm
 | **Host awareness** | None — no host-level balancing | Explicit host CV dimension with cross-host tie-breaking |
 | **Cross-pool optimization** | Per-pool independently | Global optimization with per-pool donor/receiver identification |
 | **Adaptive weights** | None | DynamicScorer with target_distance and two_phase strategies |
-| **Local minima escape** | Simple greedy | Three-tier search + focused fallback with regression limits |
+| **Swap selection** | First viable swap in PG iteration order | Best swap via scored evaluation of all candidates |
+| **Local minima escape** | None — stops when no single swap improves | Three-tier search + focused fallback with regression limits |
 | **Structural floor awareness** | Optimal score floor (single OSD) | Per-pool CV floor + unbalanceable pool exclusion |
-| **Stagnation detection** | None documented | Rolling window + per-dimension plateau tracking |
-| **Sparse pool handling** | No special handling | Adaptive ±1 thresholds for small pools, CV floor margin |
+| **Stagnation detection** | None — terminates when zero swaps in a full pass | Rolling window + per-dimension plateau tracking |
+| **Sparse pool handling** | `> 1` guard effectively disables balancing | Adaptive ±1 thresholds for small pools, CV floor margin |
+| **Termination safety** | Discards all changes if score didn't improve | Incremental — each swap is independently validated |
 
 **Where Ceph's approach has advantages:**
 
@@ -212,6 +224,10 @@ Ceph added a native read (primary) balancer in Reef (v18, 2023). It uses `pg-upm
 | **OSD size awareness** | `osdsizeopt` mode accounts for heterogeneous hardware | Assumes homogeneous OSDs |
 | **Primary affinity** | Respects `primary_affinity` per-OSD settings | Does not consider primary affinity |
 | **Client requirement** | Built-in, ships with Ceph | Separate install, Python 3.8+ |
+
+**Key gap in Ceph's balancer — sparse pools are effectively ignored:**
+
+The `(prim_score - potential_score) > 1` guard in the swap loop means a swap only fires when the combined deviation gap exceeds 1.0. In sparse pools (e.g., 32 PGs across 100 OSDs), most OSDs have 0-1 primaries and deviation scores cluster near 0. Almost no swaps qualify, so the algorithm does very little. Our approach handles this via adaptive ±1 donor/receiver thresholds and per-pool CV floor estimation that recognizes the structural limit and works within it.
 
 **Key gap in Ceph's balancer — no host-level awareness:**
 
