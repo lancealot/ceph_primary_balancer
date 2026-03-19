@@ -129,7 +129,7 @@ Pool CV is the hardest dimension to converge. OSD and host reach floor quickly, 
 `TwoPhaseWeightStrategy` hard-switches from target_distance weights to pool-focused `(0.10, 0.05, 0.85)` when OSD and host CV both drop below `phase1_threshold`. Default threshold: `max(2 * target_cv, 0.15)` — the floor prevents the threshold from becoming uselessly low at small target_cv values.
 
 #### 4b. Per-pool candidate search improvements — DONE
-- CV floor margin tightened to 2% (`floor_cv * 1.02`)
+- CV floor margin: started at 1.10x (too conservative, skipped pools that could still improve), tightened to 1.02x so only pools truly at their theoretical floor are skipped. A *tighter* margin means *fewer* pools skipped — this is the permissive direction. The 1.02x value was chosen deliberately and should not be loosened.
 - `pool_pgs` index cached for the entire optimization run (pool membership never changes across swaps)
 
 #### 4c. Adaptive donor/receiver thresholds for small pools — DONE
@@ -177,8 +177,10 @@ Potential improvements, roughly ordered by impact:
 - **Scorer object recreated per iteration** — `find_best_focused_swap()` creates a new `Scorer` with focus weights on every call. Could be cached and reused.
 
 ### Algorithm quality
-- **Pool CV floor margin too tight** — the 1.02x margin on theoretical floor underestimates the real floor by ~40% (acting set constraints + integer effects). Pools get skipped as "unbalanceable" when they could still improve. Loosening to ~1.15x would help.
 - **Per-dimension termination targets** — a single `target_cv` for all dimensions is a mismatch. OSD can reach 0.01, but pool CV has a structural floor of 0.15-0.30 for sparse clusters. Per-dimension targets (`--target-cv-osd`, `--target-cv-pool`) would let users express realistic goals.
+
+### Research
+- **Compare with Ceph's built-in upmap read balancer** — Ceph has a native `osd_read_balance` / upmap read balancer (added in Reef). Compare algorithmic strategies: how it identifies imbalance, what scoring/termination it uses, whether it operates per-pool or globally, and how it handles sparse pools. Identify where our approach diverges and whether there are ideas worth adopting or pitfalls to avoid.
 
 ### Cleanup
 - **`_check_termination()` redundancy** — `base.py:_check_termination()` recalculates OSD/host/pool stats that are already available from the cached `ScoreComponents`. Should accept pre-computed components.
