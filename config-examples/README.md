@@ -284,9 +284,9 @@ The `enabled_levels` option allows you to selectively enable optimization dimens
 - Fewer dimensions = faster but may miss cross-dimensional issues
 - Choose based on your cluster's specific bottleneck
 
-To see all available strategies with recommendations:
+Use `--optimization-levels` to specify which dimensions to optimize:
 ```bash
-python3 -m ceph_primary_balancer.cli --list-optimization-strategies
+python3 -m ceph_primary_balancer.cli --optimization-levels osd,host
 ```
 
 ## Tips and Best Practices

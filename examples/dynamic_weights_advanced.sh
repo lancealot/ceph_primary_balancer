@@ -1,9 +1,8 @@
 #!/bin/bash
 # Advanced Dynamic Weight Optimization Examples
-# Phase 7.1: Dynamic Weight Optimization
 #
 # This script demonstrates advanced usage of dynamic weight optimization,
-# including all three strategies, custom parameters, and production workflows.
+# including both strategies, custom parameters, and production workflows.
 
 set -e
 
@@ -23,7 +22,7 @@ run_example() {
     local title="$1"
     local description="$2"
     local command="$3"
-    
+
     echo ""
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}Example: $title${NC}"
@@ -33,29 +32,27 @@ run_example() {
     echo -e "${YELLOW}Command:${NC}"
     echo "$command"
     echo ""
-    
+
     read -p "Run this example? [y/N] " -n 1 -r
     echo ""
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         eval "$command"
         echo ""
-        echo -e "${GREEN}✅ Example complete!${NC}"
+        echo -e "${GREEN}Example complete!${NC}"
     else
         echo "Skipped."
     fi
 }
 
-# Example 1: Compare all three strategies
+# Example 1: Compare both strategies
 run_example \
-    "Compare All Three Strategies" \
+    "Compare Both Strategies" \
     "Run dry-run with each strategy to see how they differ.
 This helps you understand which strategy works best for your cluster." \
-    "echo '--- Proportional Strategy ---' && \
-python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy proportional --dry-run && \
-echo '' && echo '--- Target Distance Strategy (Default) ---' && \
+    "echo '--- Target Distance Strategy (Default) ---' && \
 python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy target_distance --dry-run && \
-echo '' && echo '--- Adaptive Hybrid Strategy ---' && \
-python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy adaptive_hybrid --dry-run"
+echo '' && echo '--- Two Phase Strategy ---' && \
+python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy two_phase --dry-run"
 
 # Example 2: Verbose output to see weight evolution
 run_example \
@@ -90,14 +87,15 @@ Best for debugging or when you want predictable weight changes." \
   --weight-update-interval 20 \
   --dry-run"
 
-# Example 5: Dynamic weights + pool filter
+# Example 5: Two-phase strategy for pool-heavy clusters
 run_example \
-    "Pool-Specific Dynamic Optimization" \
-    "Optimize a specific pool with dynamic weights.
-Useful for multi-pool clusters with uneven imbalances." \
+    "Two-Phase Strategy for Pool Convergence" \
+    "Uses target_distance weights initially, then hard-switches to pool-focused
+weights once OSD and host CV drop below threshold. Best for clusters where
+pool CV is the hardest dimension to converge." \
     "python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
-  --pool 3 \
+  --dynamic-strategy two_phase \
   --dry-run"
 
 # Example 6: Dynamic weights + max changes limit
@@ -140,15 +138,6 @@ Most convenient for repeated operations." \
   --config config-examples/dynamic-weights.json \
   --dry-run"
 
-# Example 9: Adaptive hybrid with custom parameters
-run_example \
-    "Adaptive Hybrid with Custom Config" \
-    "Use adaptive hybrid strategy with custom-tuned parameters.
-Shows how to use the example config file with overrides." \
-    "python3 -m ceph_primary_balancer.cli \
-  --config examples/dynamic_weights_config.json \
-  --dry-run"
-
 echo ""
 echo "=============================================="
 echo "Advanced Examples Complete!"
@@ -156,26 +145,15 @@ echo "=============================================="
 echo ""
 echo -e "${GREEN}Summary of Strategies:${NC}"
 echo ""
-echo "1. Proportional (simple):"
-echo "   - Weights proportional to CV values"
-echo "   - Predictable, easy to understand"
-echo "   - Best for evenly imbalanced clusters"
-echo ""
-echo "2. Target Distance (recommended):"
+echo "1. Target Distance (recommended):"
 echo "   - Focuses on dimensions above target"
 echo "   - Ignores already-balanced dimensions"
 echo "   - Best overall performance in most cases"
 echo ""
-echo "3. Adaptive Hybrid (advanced):"
-echo "   - Tracks improvement rates"
-echo "   - Boosts slow-improving dimensions"
-echo "   - Exponential smoothing prevents oscillation"
-echo "   - Best for complex or stuck optimizations"
-echo ""
-echo -e "${GREEN}Performance Expectations:${NC}"
-echo "  ✅ 15-25% faster convergence"
-echo "  ✅ 6-8% better final balance"
-echo "  ✅ <1% overhead"
+echo "2. Two Phase:"
+echo "   - Uses target_distance initially"
+echo "   - Switches to pool-focused weights once OSD/host converge"
+echo "   - Best for clusters where pool CV is hardest to reduce"
 echo ""
 echo -e "${BLUE}Next Steps:${NC}"
 echo "  1. Choose the strategy that fits your cluster"
@@ -183,6 +161,4 @@ echo "  2. Test with --dry-run first"
 echo "  3. Generate script for production use"
 echo "  4. Monitor results and adjust if needed"
 echo ""
-echo "Full documentation: docs/DYNAMIC-WEIGHTS.md"
 echo "Config examples: config-examples/dynamic-weights.json"
-echo "                 examples/dynamic_weights_config.json"

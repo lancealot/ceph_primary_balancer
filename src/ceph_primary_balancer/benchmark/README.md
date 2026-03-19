@@ -181,17 +181,4 @@ echo $?
 
 ## Documentation
 
-- **Complete Guide**: [docs/BENCHMARK-USAGE.md](../../../docs/BENCHMARK-USAGE.md)
-- **Phase 5 Plan**: [plans/phase5-benchmark-framework.md](../../../plans/phase5-benchmark-framework.md)
 - **Technical Spec**: [docs/technical-specification.md](../../../docs/technical-specification.md)
-
-## Version History
-
-- **v1.1.0** (2026-02-04): Phase 5 complete - Full benchmark framework
-- **v1.0.0** (2026-02-04): Production release
-- **v0.4.0** (2026-02-03): JSON export and reporting
-
----
-
-**Status:** Production Ready  
-**Maintained By:** AI-Generated (Claude Sonnet 4.5)
