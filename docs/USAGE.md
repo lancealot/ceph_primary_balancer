@@ -234,10 +234,10 @@ python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
   --output rebalance.sh
 
-# With batch greedy algorithm
+# With optimization levels
 python3 -m ceph_primary_balancer.cli \
   --from-file export.tar.gz \
-  --algorithm batch_greedy \
+  --optimization-levels osd,host \
   --output rebalance.sh
 ```
 
@@ -285,20 +285,16 @@ python3 -m ceph_primary_balancer.cli --dynamic-weights --output ./rebalance.sh
 
 ### Choose a Strategy
 
-Three weight strategies are available:
+Two weight strategies are available:
 
 ```bash
 # Target Distance (Default, Recommended)
 # Focuses on dimensions above target CV
 python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy target_distance
 
-# Proportional
-# Weights proportional to current CV values
-python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy proportional
-
-# Adaptive Hybrid (Advanced)
-# Tracks improvement rates with smoothing
-python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy adaptive_hybrid
+# Two Phase
+# Target distance initially, switches to pool-focused weights once OSD/host converge
+python3 -m ceph_primary_balancer.cli --dynamic-weights --dynamic-strategy two_phase
 ```
 
 ### Adjust Update Frequency
@@ -425,10 +421,8 @@ python3 -m ceph_primary_balancer.cli \
 
 ### Learn More
 
-For comprehensive documentation on dynamic weight optimization:
-- **[docs/DYNAMIC-WEIGHTS.md](DYNAMIC-WEIGHTS.md)** - Complete guide with strategies, tuning, and troubleshooting
 - **[config-examples/dynamic-weights.json](../config-examples/dynamic-weights.json)** - Example configuration
-- **Phase 7.1 Feature** - 92 passing tests ✅
+- **[examples/dynamic_weights_advanced.sh](../examples/dynamic_weights_advanced.sh)** - Advanced usage examples
 
 ---
 
@@ -797,25 +791,6 @@ cat ./plan.md
 # 4. If issues occur, rollback immediately
 ./rebalance_rollback.sh
 ```
-
----
-
-## Upcoming Features (v1.0.0)
-
-Still planned for v1.0.0 release:
-
-```bash
-# Configuration file support
-python3 -m ceph_primary_balancer.cli --config config.json
-
-# Custom output directory
-python3 -m ceph_primary_balancer.cli --output-dir ./output/
-
-# Verbose/quiet modes
-python3 -m ceph_primary_balancer.cli --verbose
-```
-
-See [phase4-implementation-tasks.md](../plans/phase4-implementation-tasks.md) for the implementation roadmap.
 
 ---
 

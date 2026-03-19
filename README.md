@@ -31,7 +31,7 @@ PYTHONPATH=src python3 -m ceph_primary_balancer.cli --output ./rebalance.sh
 
 # With specific optimization levels
 PYTHONPATH=src python3 -m ceph_primary_balancer.cli \
-  --enabled-levels osd,host,pool \
+  --optimization-levels osd,host,pool \
   --output ./rebalance.sh
 
 # Offline mode (air-gapped environments)
