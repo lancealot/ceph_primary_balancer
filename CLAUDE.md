@@ -176,7 +176,7 @@ Potential improvements, roughly ordered by impact:
 
 #### Comparison with Ceph's built-in read balancer
 
-Ceph added a native read (primary) balancer in Reef (v18, 2023). It uses `pg-upmap-primary` — the same mechanism we use. Two modes: `read` (primary-only) and `upmap-read` (combines capacity + primary balancing). Available both online (ceph-mgr balancer module) and offline (`osdmaptool --read`).
+Ceph added a native read (primary) balancer in Reef (v18, August 2023). It uses `pg-upmap-primary` — the same mechanism we use. Two modes: `read` (primary-only) and `upmap-read` (combines capacity + primary balancing). Reef only had the offline path (`osdmaptool --read`); the automatic online balancer mode was added in Squid (v19, 2024). Note: the Linux kernel client still does not support `pg-upmap-primary` as of late 2025 — kernel-based RBD and CephFS mounts will fail if these mappings exist.
 
 **How Ceph's read balancer works (from OSDMap.cc source):**
 
