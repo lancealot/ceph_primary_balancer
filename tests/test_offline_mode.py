@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 
 from ceph_primary_balancer import offline
 from ceph_primary_balancer.offline import OfflineExportError
+from ceph_primary_balancer.collector import parse_pg_data, parse_osd_tree, parse_pool_data
 
 
 class TestOfflineExport(unittest.TestCase):
@@ -380,7 +381,7 @@ class TestOfflineDataParsing(unittest.TestCase):
             ]
         }
         
-        pgs = offline._parse_pg_data(data)
+        pgs = parse_pg_data(data)
         
         self.assertEqual(len(pgs), 2)
         self.assertEqual(pgs["3.a1"].pool_id, 3)
@@ -402,7 +403,7 @@ class TestOfflineDataParsing(unittest.TestCase):
             ]
         }
         
-        osds, hosts = offline._parse_osd_tree(data)
+        osds, hosts = parse_osd_tree(data)
         
         self.assertEqual(len(osds), 4)
         self.assertEqual(len(hosts), 2)
@@ -431,7 +432,7 @@ class TestOfflineDataParsing(unittest.TestCase):
             ]
         }
 
-        osds, hosts = offline._parse_osd_tree(data)
+        osds, hosts = parse_osd_tree(data)
 
         self.assertEqual(len(osds), 2)
         self.assertIn(0, osds)
@@ -452,7 +453,7 @@ class TestOfflineDataParsing(unittest.TestCase):
             ]
         }
 
-        osds, hosts = offline._parse_osd_tree(data)
+        osds, hosts = parse_osd_tree(data)
         self.assertEqual(len(osds), 2)
 
     def test_parse_pool_data(self):
@@ -463,7 +464,7 @@ class TestOfflineDataParsing(unittest.TestCase):
             {"pool_id": 5, "pool_name": "test"}  # Alternative key
         ]
         
-        pools = offline._parse_pool_data(data)
+        pools = parse_pool_data(data)
         
         self.assertEqual(len(pools), 3)
         self.assertEqual(pools[1].pool_name, "rbd")

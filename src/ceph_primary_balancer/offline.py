@@ -19,10 +19,11 @@ import tarfile
 import tempfile
 import shutil
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Tuple
 from datetime import datetime, timezone
 
-from .models import PGInfo, OSDInfo, HostInfo, PoolInfo, ClusterState
+from .models import ClusterState
+from .collector import parse_pg_data, parse_osd_tree, parse_pool_data, populate_counts
 
 
 class OfflineExportError(Exception):
@@ -200,131 +201,8 @@ def load_from_export_files(export_dir: str) -> ClusterState:
     except Exception as e:
         raise OfflineExportError(f"Failed to load export files: {e}")
     
-    # Parse data using same logic as collector.py
-    pgs = _parse_pg_data(pg_dump_data)
-    osds, hosts = _parse_osd_tree(osd_tree_data)
-    pools = _parse_pool_data(pool_list_data)
-    
-    # Calculate counts (same as collector.build_cluster_state)
-    for pg_info in pgs.values():
-        primary_osd = pg_info.primary
-        if primary_osd in osds:
-            osds[primary_osd].primary_count += 1
-        
-        for osd_id in pg_info.acting:
-            if osd_id in osds:
-                osds[osd_id].total_pg_count += 1
-        
-        pool_id = pg_info.pool_id
-        if pool_id in pools:
-            pools[pool_id].pg_count += 1
-            pools[pool_id].participating_osds.update(
-                osd_id for osd_id in pg_info.acting if osd_id in osds
-            )
-            if primary_osd not in pools[pool_id].primary_counts:
-                pools[pool_id].primary_counts[primary_osd] = 0
-            pools[pool_id].primary_counts[primary_osd] += 1
-    
-    # Aggregate host counts
-    for osd_info in osds.values():
-        if osd_info.host and osd_info.host in hosts:
-            hosts[osd_info.host].primary_count += osd_info.primary_count
-            hosts[osd_info.host].total_pg_count += osd_info.total_pg_count
-    
+    pgs = parse_pg_data(pg_dump_data)
+    osds, hosts = parse_osd_tree(osd_tree_data)
+    pools = parse_pool_data(pool_list_data)
+    populate_counts(pgs, osds, hosts, pools)
     return ClusterState(pgs=pgs, osds=osds, hosts=hosts, pools=pools)
-
-
-def _parse_pg_data(data: Dict) -> Dict[str, PGInfo]:
-    """Parse PG dump JSON data (same format as collector.collect_pg_data)."""
-    pgs = {}
-    pg_stats = data.get('pg_stats', [])
-    
-    for pg_stat in pg_stats:
-        pgid = pg_stat['pgid']
-        pool_id = int(pgid.split('.')[0])
-        acting = pg_stat['acting']
-        
-        pgs[pgid] = PGInfo(
-            pgid=pgid,
-            pool_id=pool_id,
-            acting=acting
-        )
-    
-    return pgs
-
-
-def _parse_osd_tree(data: Dict) -> Tuple[Dict[int, OSDInfo], Dict[str, HostInfo]]:
-    """Parse OSD tree JSON data (same format as collector.collect_osd_data)."""
-    nodes = data.get('nodes', [])
-    node_map = {node['id']: node for node in nodes}
-    
-    # Build OSD to host mapping
-    osd_to_host = {}
-    for node in nodes:
-        if node.get('type') == 'host':
-            host_name = node['name']
-            for child_id in node.get('children', []):
-                if child_id in node_map and node_map[child_id].get('type') == 'osd':
-                    osd_to_host[child_id] = host_name
-    
-    # Build hosts
-    hosts = {}
-    for node in nodes:
-        if node.get('type') == 'host':
-            hostname = node['name']
-            hosts[hostname] = HostInfo(
-                hostname=hostname,
-                osd_ids=[],
-                primary_count=0,
-                total_pg_count=0
-            )
-    
-    # Build OSDs (skip down OSDs)
-    osds = {}
-    for node in nodes:
-        if node.get('type') == 'osd':
-            if node.get('status', 'up') != 'up':
-                continue
-
-            osd_id = node['id']
-            host_name = osd_to_host.get(osd_id)
-            
-            # Fallback: try parent field
-            if not host_name:
-                current_id = node.get('parent')
-                while current_id is not None and current_id in node_map:
-                    parent_node = node_map[current_id]
-                    if parent_node.get('type') == 'host':
-                        host_name = parent_node['name']
-                        break
-                    current_id = parent_node.get('parent')
-            
-            osds[osd_id] = OSDInfo(
-                osd_id=osd_id,
-                host=host_name,
-                primary_count=0,
-                total_pg_count=0
-            )
-            
-            if host_name and host_name in hosts:
-                hosts[host_name].osd_ids.append(osd_id)
-    
-    return osds, hosts
-
-
-def _parse_pool_data(data: list) -> Dict[int, PoolInfo]:
-    """Parse pool list JSON data (same format as collector.collect_pool_data)."""
-    pools = {}
-    
-    for pool_entry in data:
-        pool_id = pool_entry.get('pool') or pool_entry.get('pool_id')
-        pool_name = pool_entry['pool_name']
-        
-        pools[pool_id] = PoolInfo(
-            pool_id=pool_id,
-            pool_name=pool_name,
-            pg_count=0,
-            primary_counts={}
-        )
-    
-    return pools
