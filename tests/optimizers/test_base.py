@@ -97,7 +97,7 @@ class TestOptimizerBase(unittest.TestCase):
         optimizer = DummyOptimizer()
         
         self.assertIsNotNone(optimizer)
-        self.assertEqual(optimizer.target_cv, 0.10)
+        self.assertEqual(optimizer.target_cv, 0.01)
         self.assertEqual(optimizer.max_iterations, 1000)
         self.assertIsInstance(optimizer.stats, OptimizerStats)
     

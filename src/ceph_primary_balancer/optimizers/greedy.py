@@ -205,6 +205,7 @@ def find_best_swap(
     scorer: Scorer,
     pool_donors: Optional[Dict[int, Set[int]]] = None,
     pool_receivers: Optional[Dict[int, Set[int]]] = None,
+    components=None,
 ) -> Optional[SwapProposal]:
     """
     Find the single best swap that reduces composite score the most.
@@ -234,8 +235,9 @@ def find_best_swap(
     pool_donors = pool_donors or {}
     pool_receivers = pool_receivers or {}
 
-    # Compute score components once — all candidate evaluations use deltas from this
-    components = scorer.calculate_score_with_components(state)
+    # Use pre-computed components if provided, otherwise compute fresh
+    if components is None:
+        components = scorer.calculate_score_with_components(state)
     current_score = components.total
 
     # Convert to sets for O(1) lookup
@@ -295,6 +297,7 @@ def find_best_pool_swap(
     scorer: Scorer,
     target_cv: float,
     pool_pgs: Optional[Dict[int, list]] = None,
+    components=None,
 ) -> Optional[SwapProposal]:
     """Find the best swap targeting pools with CV above target.
 
@@ -317,7 +320,8 @@ def find_best_pool_swap(
     if 'pool' not in scorer.enabled_levels or not state.pools:
         return None
 
-    components = scorer.calculate_score_with_components(state)
+    if components is None:
+        components = scorer.calculate_score_with_components(state)
     current_score = components.total
 
     # Use pre-built index if provided, otherwise build on the fly
@@ -370,6 +374,7 @@ def find_best_focused_swap(
     scorer: Scorer,
     target_cv: float,
     max_regression: float = 0.001,
+    components=None,
 ) -> Optional[SwapProposal]:
     """Find the best swap targeting the dimension furthest from target.
 
@@ -390,7 +395,8 @@ def find_best_focused_swap(
     """
     import math
 
-    components = scorer.calculate_score_with_components(state)
+    if components is None:
+        components = scorer.calculate_score_with_components(state)
     current_score = components.total
 
     # Determine which dimension is furthest from target
@@ -586,6 +592,12 @@ class GreedyOptimizer(OptimizerBase):
             # Identify per-pool donors and receivers
             pool_donors, pool_receivers = analyzer.identify_pool_donors_receivers(state)
 
+            # Compute score components ONCE for the entire search phase.
+            # All search functions share this — state doesn't change until
+            # apply_swap, so components remain valid across all searches.
+            # This also prevents DynamicScorer from over-counting iterations.
+            iter_components = self.scorer.calculate_score_with_components(state)
+
             # Compute search state once (handles pool_filter)
             if self.pool_filter is not None:
                 filtered_pgs = {pgid: pg for pgid, pg in state.pgs.items() if pg.pool_id == self.pool_filter}
@@ -604,7 +616,8 @@ class GreedyOptimizer(OptimizerBase):
 
             # Find best swap using donor/receiver filtering
             swap = find_best_swap(search_state, donors, receivers, self.scorer,
-                                  pool_donors, pool_receivers)
+                                  pool_donors, pool_receivers,
+                                  components=iter_components)
 
             # If normal threshold found nothing, retry with relaxed threshold
             # (0%) so any OSD above mean is a donor and any below mean is a
@@ -618,12 +631,15 @@ class GreedyOptimizer(OptimizerBase):
                     state, threshold_pct=0.0
                 )
                 swap = find_best_swap(search_state, relaxed_donors, relaxed_receivers,
-                                      self.scorer, relaxed_pool_d, relaxed_pool_r)
+                                      self.scorer, relaxed_pool_d, relaxed_pool_r,
+                                      components=iter_components)
 
             # Also search for pool-targeted swaps (catches candidates that
             # donor/receiver filtering misses for small/imbalanced pools).
             # Compare with whatever the global search found and pick the best.
-            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv, pool_pgs=pool_pgs_cache)
+            pool_swap = find_best_pool_swap(state, self.scorer, self.target_cv,
+                                            pool_pgs=pool_pgs_cache,
+                                            components=iter_components)
             if pool_swap is not None:
                 if swap is None or pool_swap.score_improvement > swap.score_improvement:
                     swap = pool_swap
@@ -635,6 +651,7 @@ class GreedyOptimizer(OptimizerBase):
                 swap = find_best_focused_swap(
                     state, self.scorer, self.target_cv,
                     max_regression=0.001,
+                    components=iter_components,
                 )
                 if swap is not None:
                     used_focused_fallback = True
@@ -659,14 +676,14 @@ class GreedyOptimizer(OptimizerBase):
                 fallback_window.pop(0)
             fallback_count = sum(fallback_window)
             if fallback_count >= stall_limit:
-                components = self.scorer.calculate_score_with_components(state)
+                # Reuse pre-swap components — state hasn't changed yet
                 fb_dim_cvs: Dict[str, float] = {}
                 if 'osd' in self.scorer.enabled_levels:
-                    fb_dim_cvs['osd'] = components.osd_cv
+                    fb_dim_cvs['osd'] = iter_components.osd_cv
                 if 'host' in self.scorer.enabled_levels:
-                    fb_dim_cvs['host'] = components.host_cv
+                    fb_dim_cvs['host'] = iter_components.host_cv
                 if 'pool' in self.scorer.enabled_levels:
-                    fb_dim_cvs['pool'] = components.avg_pool_cv
+                    fb_dim_cvs['pool'] = iter_components.avg_pool_cv
 
                 if fallback_dim_cvs_at_start is None:
                     fallback_dim_cvs_at_start = fb_dim_cvs.copy()

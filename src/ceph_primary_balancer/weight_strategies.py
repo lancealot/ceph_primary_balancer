@@ -593,7 +593,10 @@ class TwoPhaseWeightStrategy(WeightStrategy):
         weight_history: List[Tuple[float, float, float]],
     ) -> Tuple[float, float, float]:
         osd_cv, host_cv, pool_cv = cvs
-        threshold = self.phase1_threshold if self.phase1_threshold > 0 else 2.0 * target_cv
+        # When target_cv is very low (e.g., 0.01), 2× target would be 0.02
+        # which prevents phase 2 from ever activating.  Floor at 0.15 so the
+        # pool-focused phase kicks in once OSD/host are "good enough".
+        threshold = self.phase1_threshold if self.phase1_threshold > 0 else max(2.0 * target_cv, 0.15)
 
         if osd_cv <= threshold and host_cv <= threshold:
             return self.phase2_weights

@@ -54,7 +54,7 @@ class Config:
         """
         return {
             'optimization': {
-                'target_cv': 0.10,
+                'target_cv': 0.01,
                 'max_changes': None,
                 'max_iterations': 10000,
                 'enabled_levels': ['osd', 'host', 'pool']

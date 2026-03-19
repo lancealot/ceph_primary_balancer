@@ -153,8 +153,8 @@ def main():
     parser.add_argument(
         '--target-cv',
         type=float,
-        default=0.10,
-        help='Target coefficient of variation for OSD level (default: 0.10)'
+        default=0.01,
+        help='Target coefficient of variation (default: 0.01). Low default ensures optimizer runs to swap exhaustion rather than stopping early.'
     )
     parser.add_argument(
         '--output',
