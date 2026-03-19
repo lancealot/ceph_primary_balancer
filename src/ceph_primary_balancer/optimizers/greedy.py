@@ -1,117 +1,13 @@
-"""
-Greedy optimization algorithm for Ceph Primary PG Balancer.
-
-This module implements the original greedy optimization algorithm that iteratively
-finds the single best swap in each iteration and applies it, continuing until
-target balance is achieved or no more improvements are possible.
-
-The greedy approach is:
-- Fast: O(n²) per iteration where n is number of PGs
-- Deterministic: Always produces the same result for the same input
-- Proven: Battle-tested in production environments
-- Simple: Easy to understand and debug
-
-Phase 7 Update: Refactored into OptimizerBase architecture while maintaining
-100% backward compatibility with existing behavior.
-"""
+"""Greedy optimizer: iteratively applies the single best swap per iteration."""
 
 from typing import Dict, List, Optional, Set
 
 from .base import OptimizerBase
-from ..models import ClusterState, OSDInfo, SwapProposal, HostInfo, PoolInfo
+from ..models import ClusterState, SwapProposal
 from ..scorer import Scorer, _pool_cv_floor, UNBALANCEABLE_CV_FLOOR
 from .. import analyzer
 
 
-
-def simulate_swap_score(state: ClusterState, pgid: str, new_primary: int, scorer: Scorer) -> float:
-    """
-    Simulate what score would be AFTER a swap without modifying state.
-    
-    This function temporarily adjusts the primary counts at both OSD and host levels
-    to calculate what the composite score would be if the swap were applied, without 
-    actually modifying the ClusterState object.
-    
-    Args:
-        state: Current ClusterState
-        pgid: PG identifier to swap
-        new_primary: OSD ID to become the new primary
-        scorer: Scorer instance for composite scoring
-        
-    Returns:
-        Simulated composite score after the swap
-    """
-    # Get the PG and current primary
-    pg = state.pgs[pgid]
-    old_primary = pg.primary
-    
-    # Create temporary OSDInfo objects with adjusted counts
-    simulated_osds = {}
-    for osd_id, osd in state.osds.items():
-        simulated_osds[osd_id] = OSDInfo(
-            osd_id=osd.osd_id,
-            host=osd.host,
-            primary_count=osd.primary_count,
-            total_pg_count=osd.total_pg_count
-        )
-    
-    # Adjust OSD counts
-    simulated_osds[old_primary].primary_count -= 1
-    simulated_osds[new_primary].primary_count += 1
-    
-    # Create temporary HostInfo objects with recalculated counts
-    simulated_hosts = {}
-    if state.hosts:
-        for hostname, host in state.hosts.items():
-            simulated_hosts[hostname] = HostInfo(
-                hostname=host.hostname,
-                osd_ids=host.osd_ids[:],  # Copy list
-                primary_count=0,
-                total_pg_count=0
-            )
-        
-        # Recalculate host-level aggregations
-        for osd in simulated_osds.values():
-            if osd.host and osd.host in simulated_hosts:
-                simulated_hosts[osd.host].primary_count += osd.primary_count
-                simulated_hosts[osd.host].total_pg_count += osd.total_pg_count
-    
-    # Create temporary PoolInfo objects with recalculated counts (Phase 2)
-    simulated_pools = {}
-    if state.pools:
-        for pool_id, pool in state.pools.items():
-            simulated_pools[pool_id] = PoolInfo(
-                pool_id=pool.pool_id,
-                pool_name=pool.pool_name,
-                pg_count=pool.pg_count,
-                primary_counts=pool.primary_counts.copy(),  # Copy dict
-                participating_osds=pool.participating_osds,  # Immutable during scoring
-            )
-        
-        # Update the affected pool's primary counts
-        pg = state.pgs[pgid]
-        pool_id = pg.pool_id
-        if pool_id in simulated_pools:
-            # Decrement old primary
-            if old_primary in simulated_pools[pool_id].primary_counts:
-                simulated_pools[pool_id].primary_counts[old_primary] -= 1
-                if simulated_pools[pool_id].primary_counts[old_primary] == 0:
-                    del simulated_pools[pool_id].primary_counts[old_primary]
-            
-            # Increment new primary
-            if new_primary not in simulated_pools[pool_id].primary_counts:
-                simulated_pools[pool_id].primary_counts[new_primary] = 0
-            simulated_pools[pool_id].primary_counts[new_primary] += 1
-    
-    # Create simulated state
-    simulated_state = ClusterState(
-        pgs=state.pgs,  # PGs don't need to be copied for scoring
-        osds=simulated_osds,
-        hosts=simulated_hosts,
-        pools=simulated_pools
-    )
-    
-    return scorer.calculate_score(simulated_state)
 
 
 def apply_swap(state: ClusterState, swap: SwapProposal):

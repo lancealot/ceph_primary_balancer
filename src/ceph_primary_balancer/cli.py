@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-"""Command-line interface for the Ceph Primary PG Balancer.
-
-This module provides the main entry point for analyzing and optimizing
-the distribution of primary placement groups across OSDs in a Ceph cluster.
-
-This entire codebase was designed and written by Claude, an AI assistant by
-Anthropic. Human developers provide direction and review.
-"""
+"""CLI entry point for the Ceph Primary PG Balancer."""
 
 import argparse
 import sys
 import copy
-import os
 from datetime import datetime
 from pathlib import Path
 from . import collector, analyzer, script_generator
@@ -22,61 +14,42 @@ from .reporter import Reporter
 from .config import Config, ConfigError
 
 
+def _section(title: str) -> None:
+    print(f"\n{'='*60}\n{title}\n{'='*60}")
+
 
 def main():
-    """Main entry point for the CLI.
-    
-    Orchestrates the complete workflow:
-    1. Parse command-line arguments
-    2. Collect cluster data from Ceph
-    3. Analyze current primary distribution
-    4. Check if cluster is already balanced
-    5. Optimize primary assignments if needed
-    6. Generate rebalancing script (unless --dry-run)
-    
-    Returns:
-        None. Exits with status 0 on success.
-    """
     parser = argparse.ArgumentParser(
         description='Analyze and optimize Ceph primary PG distribution with three-dimensional balancing'
     )
     
-    # Phase 8: Offline mode support (v1.5.0)
     parser.add_argument(
         '--from-file',
         type=str,
         default=None,
-        help='Offline mode: Load cluster data from exported .tar.gz file (Phase 8). '
-             'Use this for air-gapped environments where direct cluster access is unavailable. '
-             'Export data using scripts/ceph-export-cluster-data.sh'
+        help='Load cluster data from exported .tar.gz file for offline/air-gapped use'
     )
-    
-    # Configuration file support (v1.0.0)
     parser.add_argument(
         '--config',
         type=str,
         default=None,
-        help='Load configuration from JSON or YAML file (v1.0.0)'
+        help='Load configuration from JSON or YAML file'
     )
-    
-    # Output organization (v1.0.0)
     parser.add_argument(
         '--output-dir',
         type=str,
         default=None,
-        help='Output directory for all generated files with timestamp-based names (v1.0.0)'
+        help='Output directory for all generated files (timestamped names)'
     )
-    
-    # Verbosity control (v1.0.0)
     parser.add_argument(
         '--verbose',
         action='store_true',
-        help='Enable verbose output with detailed information (v1.0.0)'
+        help='Enable verbose output'
     )
     parser.add_argument(
         '--quiet',
         action='store_true',
-        help='Minimal output, errors only (v1.0.0)'
+        help='Minimal output, errors only'
     )
     
     parser.add_argument(
@@ -99,44 +72,44 @@ def main():
         '--weight-osd',
         type=float,
         default=0.5,
-        help='Weight for OSD-level variance in scoring (default: 0.5, Phase 2)'
+        help='Weight for OSD-level balance in scoring (default: 0.5)'
     )
     parser.add_argument(
         '--weight-host',
         type=float,
         default=0.3,
-        help='Weight for host-level variance in scoring (default: 0.3)'
+        help='Weight for host-level balance in scoring (default: 0.3)'
     )
     parser.add_argument(
         '--weight-pool',
         type=float,
         default=0.2,
-        help='Weight for pool-level variance in scoring (default: 0.2, Phase 2)'
+        help='Weight for pool-level balance in scoring (default: 0.2)'
     )
     parser.add_argument(
         '--pool',
         type=int,
         default=None,
-        help='Only optimize PGs from specified pool ID (optional, Phase 2)'
+        help='Only optimize PGs from specified pool ID'
     )
     parser.add_argument(
         '--json-output',
         type=str,
         default=None,
-        help='Export analysis results to JSON file (Phase 3)'
+        help='Export analysis results to JSON file'
     )
     parser.add_argument(
         '--report-output',
         type=str,
         default=None,
-        help='Generate markdown analysis report (Phase 3)'
+        help='Generate markdown analysis report'
     )
     parser.add_argument(
         '--format',
         type=str,
         choices=['terminal', 'json', 'markdown', 'all'],
         default='terminal',
-        help='Output format: terminal (default), json, markdown, or all (Phase 3)'
+        help='Output format (default: terminal)'
     )
     parser.add_argument(
         '--max-changes',
@@ -154,23 +127,16 @@ def main():
              'Script will pause between batches for safety.'
     )
     
-    # Phase 6.5: Configurable optimization levels
     parser.add_argument(
         '--optimization-levels',
         type=str,
         default='osd,host,pool',
-        help='Comma-separated optimization levels: osd,host,pool (default: all). '
-             'Examples: "osd" for OSD-only, "osd,host" for OSD+HOST. '
-             'Phase 6.5: Enables selective dimension optimization for performance tuning.'
+        help='Comma-separated optimization levels (default: osd,host,pool)'
     )
-    
-    
-    # Phase 7.1: Dynamic weight adaptation
     parser.add_argument(
         '--dynamic-weights',
         action='store_true',
-        help='Enable dynamic weight adaptation based on cluster state (Phase 7.1). '
-             'Automatically adjusts optimization priorities for faster convergence and better results.'
+        help='Enable dynamic weight adaptation for faster convergence'
     )
     
     parser.add_argument(
@@ -196,68 +162,50 @@ def main():
 
     args = parser.parse_args()
 
-    # Phase 8: Detect and report offline mode
     offline_mode = args.from_file is not None
     offline_metadata = None
-    
+
     if offline_mode:
-        print("=" * 60)
-        print("OFFLINE MODE")
-        print("=" * 60)
+        _section("OFFLINE MODE")
         print(f"Loading cluster data from: {args.from_file}")
-        print()
         
         # Import offline module and load metadata
         from . import offline
         
         try:
-            # Extract archive and load metadata
             if args.from_file.endswith('.tar.gz'):
                 export_dir = offline.extract_export_archive(args.from_file)
             else:
                 export_dir = args.from_file
-            
-            # Load and display metadata
+
             offline_metadata = offline.load_metadata(export_dir)
             export_age = offline.calculate_export_age(offline_metadata)
-            
-            print("Export Information:")
-            print(f"  Export Date: {offline_metadata.get('export_date_local', 'unknown')}")
-            print(f"  Export Age: {export_age}")
-            print(f"  Source Host: {offline_metadata.get('export_hostname', 'unknown')}")
-            print(f"  Ceph Version: {offline_metadata.get('ceph_version', 'unknown')}")
-            print(f"  Cluster FSID: {offline_metadata.get('cluster_fsid', 'unknown')}")
-            print()
-            
-            # Warn if export is old
+
+            print(f"  Date: {offline_metadata.get('export_date_local', 'unknown')} ({export_age})")
+            print(f"  Host: {offline_metadata.get('export_hostname', 'unknown')}")
+            print(f"  Ceph: {offline_metadata.get('ceph_version', 'unknown')}")
+
             if 'days' in export_age:
                 days = int(export_age.split()[0])
                 if days > 7:
-                    print("⚠️  WARNING: Export is more than 7 days old")
-                    print("   Cluster state may have changed significantly")
-                    print()
-            
+                    print(f"  WARNING: Export is {export_age} — cluster state may have changed")
+
         except offline.OfflineExportError as e:
             print(f"Error loading offline export: {e}")
             sys.exit(1)
     
-    # Validate verbose/quiet mutual exclusivity
     if args.verbose and args.quiet:
         print("Error: Cannot specify both --verbose and --quiet")
         sys.exit(1)
     
-    # Define print helpers for verbosity control
     def vprint(msg):
-        """Print if verbose mode enabled."""
-        if args.verbose and not args.quiet:
+        if args.verbose:
             print(msg)
-    
+
     def qprint(msg):
-        """Print unless quiet mode enabled."""
         if not args.quiet:
             print(msg)
-    
-    # Load configuration file if specified (v1.0.0)
+
     config = None
     if args.config:
         vprint(f"Loading configuration from: {args.config}")
@@ -270,41 +218,27 @@ def main():
     else:
         config = Config()  # Use defaults
     
-    # Apply configuration values with CLI override precedence
-    # CLI args > config file > defaults
-    if args.target_cv == 0.01:  # Default value, check config
-        args.target_cv = config.get('optimization.target_cv', 0.01)
-    
-    if args.weight_osd == 0.5:  # Default value
-        args.weight_osd = config.get('scoring.weights.osd', 0.5)
-    
-    if args.weight_host == 0.3:  # Default value
-        args.weight_host = config.get('scoring.weights.host', 0.3)
-    
-    if args.weight_pool == 0.2:  # Default value
-        args.weight_pool = config.get('scoring.weights.pool', 0.2)
-    
+    # Apply config file values where CLI arg is still at its default
+    _config_defaults = {
+        'target_cv': (0.01, 'optimization.target_cv'),
+        'weight_osd': (0.5, 'scoring.weights.osd'),
+        'weight_host': (0.3, 'scoring.weights.host'),
+        'weight_pool': (0.2, 'scoring.weights.pool'),
+        'batch_size': (50, 'script.batch_size'),
+        'dynamic_strategy': ('target_distance', 'optimization.dynamic_strategy'),
+        'weight_update_interval': (10, 'optimization.weight_update_interval'),
+    }
+    for attr, (default_val, config_key) in _config_defaults.items():
+        if getattr(args, attr) == default_val:
+            setattr(args, attr, config.get(config_key, default_val))
+
     if args.max_changes is None:
         args.max_changes = config.get('optimization.max_changes')
-    
-    if args.batch_size == 50:  # Default value
-        args.batch_size = config.get('script.batch_size', 50)
-    
-    # Phase 7.1: Dynamic weights config support
-    if not args.dynamic_weights:  # Not set via CLI
+    if not args.dynamic_weights:
         args.dynamic_weights = config.get('optimization.dynamic_weights', False)
-    
-    if args.dynamic_strategy == 'target_distance':  # Default value
-        args.dynamic_strategy = config.get('optimization.dynamic_strategy', 'target_distance')
-
-    # If user explicitly chose a strategy, enable dynamic weights automatically
     if args.dynamic_strategy != 'target_distance' and not args.dynamic_weights:
         args.dynamic_weights = True
     
-    if args.weight_update_interval == 10:  # Default value
-        args.weight_update_interval = config.get('optimization.weight_update_interval', 10)
-    
-    # Handle output directory (v1.0.0)
     if args.output_dir:
         output_dir = Path(args.output_dir)
         vprint(f"Creating output directory: {output_dir}")
@@ -343,12 +277,10 @@ def main():
         
         qprint(f"Output directory: {output_dir}")
     
-    # Validate batch-size
     if args.batch_size <= 0:
         print("Error: --batch-size must be positive")
         sys.exit(1)
     
-    # Validate weights
     weight_sum = args.weight_osd + args.weight_host + args.weight_pool
     if abs(weight_sum - 1.0) > 0.001:
         print(f"Error: Weights must sum to 1.0, got {weight_sum}")
@@ -359,30 +291,19 @@ def main():
         print("Error: Weights must be non-negative")
         sys.exit(1)
     
-    # Validate max-changes
     if args.max_changes is not None and args.max_changes < 0:
         print("Error: --max-changes must be non-negative")
         sys.exit(1)
     
-    # Phase 6.5: Parse and validate optimization levels
     enabled_levels = [level.strip() for level in args.optimization_levels.split(',')]
     valid_levels = {'osd', 'host', 'pool'}
-    
-    for level in enabled_levels:
-        if level not in valid_levels:
-            print(f"Error: Invalid optimization level '{level}'")
-            print(f"Valid levels: {', '.join(sorted(valid_levels))}")
-            print("Valid levels: osd, host, pool")
-            sys.exit(1)
-    
-    if not enabled_levels:
-        print("Error: At least one optimization level must be enabled")
+    invalid = [l for l in enabled_levels if l not in valid_levels]
+    if invalid or not enabled_levels:
+        print(f"Error: Invalid optimization level(s): {', '.join(invalid or ['(none)'])}")
+        print(f"Valid levels: osd, host, pool")
         sys.exit(1)
     
-    # Create scorer with configured weights and enabled levels (Phase 6.5)
-    # When dynamic weights are enabled, let the optimizer create a DynamicScorer
-    # instead of a static Scorer — otherwise the static scorer overrides dynamic
-    # weight adaptation entirely.
+    # Dynamic weights: let the optimizer create a DynamicScorer instead of static
     if args.dynamic_weights:
         scorer = None
     else:
@@ -393,7 +314,6 @@ def main():
             enabled_levels=enabled_levels
         )
     
-    # Step 1: Collect cluster data
     if offline_mode:
         qprint("Loading cluster state from offline export...")
     else:
@@ -408,10 +328,7 @@ def main():
     qprint(f"Found {len(state.osds)} OSDs, {len(state.hosts)} hosts, {len(state.pools)} pools, {len(state.pgs)} PGs")
     vprint(f"  OSDs: {list(state.osds.keys())[:10]}..." if len(state.osds) > 10 else f"  OSDs: {list(state.osds.keys())}")
     
-    # Step 2: Calculate current statistics
-    print("\n" + "="*60)
-    print("CURRENT STATE - OSD Level")
-    print("="*60)
+    _section("CURRENT STATE - OSD Level")
     try:
         current_stats_osd = analyzer.calculate_statistics(
             [osd.primary_count for osd in state.osds.values()]
@@ -421,12 +338,9 @@ def main():
         print(f"Error calculating statistics: {e}")
         sys.exit(1)
     
-    # Step 2b: Calculate host-level statistics if available
     current_stats_host = None
     if state.hosts:
-        print("\n" + "="*60)
-        print("CURRENT STATE - Host Level")
-        print("="*60)
+        _section("CURRENT STATE - Host Level")
         host_counts = [host.primary_count for host in state.hosts.values()]
         current_stats_host = analyzer.calculate_statistics(host_counts)
         print(f"Total Hosts: {len(state.hosts)}")
@@ -444,11 +358,8 @@ def main():
         for hostname, host in sorted_hosts[:5]:
             print(f"  {hostname}: {host.primary_count} primaries across {len(host.osd_ids)} OSDs")
     
-    # Step 2c: Calculate pool-level statistics if available (Phase 2)
     if state.pools:
-        print("\n" + "="*60)
-        print("CURRENT STATE - Pool Level")
-        print("="*60)
+        _section("CURRENT STATE - Pool Level")
         print(f"Total Pools: {len(state.pools)}")
         
         from .analyzer import get_pool_statistics_summary
@@ -469,8 +380,7 @@ def main():
                 print(f"    PGs: {pool.pg_count}, CV: {pool_stat.cv:.2%}, "
                       f"Range: [{pool_stat.min_val}-{pool_stat.max_val}]")
     
-    # Step 3: Check if already balanced across all enabled dimensions
-    print("\n" + "="*60)
+    print()  # blank line before balance check
     all_below_target = True
     if 'osd' in enabled_levels and current_stats_osd.cv > args.target_cv:
         all_below_target = False
@@ -487,9 +397,7 @@ def main():
         print(f"Cluster already balanced across all enabled dimensions (target CV = {args.target_cv:.2%})")
         return
     
-    # Step 4: Optimize primary distribution with multi-dimensional scoring
-    print(f"OPTIMIZATION")
-    print("="*60)
+    _section("OPTIMIZATION")
     print(f"Target CV: {args.target_cv:.2%} (checked across: {', '.join(enabled_levels)})")
     print(f"Scoring weights: OSD={args.weight_osd:.1f}, Host={args.weight_host:.1f}, Pool={args.weight_pool:.1f}")
     if args.pool is not None:
@@ -499,11 +407,7 @@ def main():
             print(f"Warning: Pool {args.pool} not found, ignoring filter")
     print()
     
-    # Store original state for reporting (before optimization modifies it)
     original_state = copy.deepcopy(state)
-
-    # Determine max iterations: --max-changes controls the optimizer loop directly
-    # (each iteration = one swap), falling back to config max_iterations
     max_iterations = args.max_changes if args.max_changes is not None else config.get('optimization.max_iterations', 10000)
 
     print("Algorithm: greedy")
@@ -520,16 +424,12 @@ def main():
     )
     swaps = optimizer.optimize(state)
     
-    # Step 5: Handle case where no swaps were found
     if not swaps:
         print("\nNo optimization swaps found")
         print("The cluster may already be optimally balanced or no valid swaps exist")
         return
     
-    # Step 6: Report proposed changes
-    print("\n" + "="*60)
-    print("PROPOSED STATE - OSD Level")
-    print("="*60)
+    _section("PROPOSED STATE - OSD Level")
     print(f"Proposed {len(swaps)} primary reassignments")
     
     proposed_stats_osd = analyzer.calculate_statistics(
@@ -539,22 +439,16 @@ def main():
     print(f"OSD Std Dev: {current_stats_osd.std_dev:.2f} -> {proposed_stats_osd.std_dev:.2f}")
     print(f"OSD Range: [{current_stats_osd.min_val}-{current_stats_osd.max_val}] -> [{proposed_stats_osd.min_val}-{proposed_stats_osd.max_val}]")
     
-    # Step 6b: Report host-level improvements if available
     if state.hosts:
-        print("\n" + "="*60)
-        print("PROPOSED STATE - Host Level")
-        print("="*60)
+        _section("PROPOSED STATE - Host Level")
         host_counts = [host.primary_count for host in state.hosts.values()]
         proposed_stats_host = analyzer.calculate_statistics(host_counts)
         print(f"Host CV Improvement: {current_stats_host.cv:.2%} -> {proposed_stats_host.cv:.2%}")
         print(f"Host Std Dev: {current_stats_host.std_dev:.2f} -> {proposed_stats_host.std_dev:.2f}")
         print(f"Host Range: [{current_stats_host.min_val}-{current_stats_host.max_val}] -> [{proposed_stats_host.min_val}-{proposed_stats_host.max_val}]")
     
-    # Step 6c: Report pool-level improvements if available (Phase 2)
     if state.pools:
-        print("\n" + "="*60)
-        print("PROPOSED STATE - Pool Level")
-        print("="*60)
+        _section("PROPOSED STATE - Pool Level")
         
         from .analyzer import get_pool_statistics_summary
         current_pool_stats = get_pool_statistics_summary(state)
@@ -572,12 +466,8 @@ def main():
                 print(f"  CV: {pool_stat.cv:.2%}")
                 print(f"  Range: [{pool_stat.min_val}-{pool_stat.max_val}]")
     
-    # Step 7: Generate JSON export if requested (Phase 3)
     if args.json_output or args.format in ['json', 'all']:
         json_path = args.json_output or './analysis.json'
-        print(f"\n" + "="*60)
-        print("EXPORTING JSON ANALYSIS")
-        print("="*60)
         try:
             from . import __version__
             exporter = JSONExporter(tool_version=__version__)
@@ -593,12 +483,8 @@ def main():
         except Exception as e:
             print(f"Warning: Failed to export JSON: {e}")
     
-    # Step 8: Generate markdown report if requested (Phase 3)
     if args.report_output or args.format in ['markdown', 'all']:
         report_path = args.report_output or './analysis.md'
-        print(f"\n" + "="*60)
-        print("GENERATING MARKDOWN REPORT")
-        print("="*60)
         try:
             reporter = Reporter(top_n=10)
             reporter.generate_markdown_report(
@@ -611,11 +497,7 @@ def main():
         except Exception as e:
             print(f"Warning: Failed to generate markdown report: {e}")
     
-    # Step 9: Generate enhanced terminal report if requested (Phase 3)
     if args.format in ['terminal', 'all']:
-        print(f"\n" + "="*60)
-        print("ENHANCED REPORT")
-        print("="*60)
         try:
             reporter = Reporter(top_n=5)
             report = reporter.generate_terminal_report(
@@ -627,7 +509,6 @@ def main():
         except Exception as e:
             print(f"Warning: Failed to generate enhanced report: {e}")
     
-    # Step 10: Generate script or report dry-run
     if not args.dry_run:
         script_generator.generate_script(
             swaps,
@@ -636,20 +517,13 @@ def main():
             offline_mode=offline_mode,
             export_metadata=offline_metadata if offline_mode else None
         )
-
-        # Generate rollback script
         rollback_path = script_generator.generate_rollback_script(swaps, args.output)
-        
-        print(f"\n" + "="*60)
-        print(f"Script written to: {args.output}")
-        print(f"Batch size: {args.batch_size} commands per batch")
+
+        print(f"\nScript written to: {args.output} (batch size: {args.batch_size})")
         if rollback_path:
             print(f"Rollback script: {rollback_path}")
-        print("="*60)
     else:
-        print("\n" + "="*60)
-        print("Dry run mode - no script generated")
-        print("="*60)
+        print("\nDry run mode - no script generated")
 
 
 if __name__ == '__main__':

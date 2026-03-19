@@ -1,18 +1,4 @@
-"""Offline mode support for air-gapped environments.
-
-This module provides functionality to extract and load Ceph cluster data
-from offline exports, enabling analysis without direct cluster access.
-
-Functions:
-    extract_export_archive: Extract tar.gz export archive to temporary directory
-    validate_export_files: Validate that all required files exist and are valid JSON
-    load_metadata: Load and return export metadata
-    calculate_export_age: Calculate human-readable age of export
-    load_from_export_files: Load ClusterState from raw Ceph command output files
-    _parse_pg_data: Parse PG dump JSON data
-    _parse_osd_tree: Parse OSD tree JSON data
-    _parse_pool_data: Parse pool list JSON data
-"""
+"""Load ClusterState from offline export archives."""
 
 import json
 import tarfile

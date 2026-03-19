@@ -1,13 +1,4 @@
-"""
-Multi-dimensional scoring module for the Ceph Primary PG Balancer.
-
-This module implements composite scoring across multiple dimensions:
-- OSD-level variance (prevents individual OSD hotspots)
-- Host-level variance (prevents network/node bottlenecks)
-- Pool-level variance (ensures per-pool balance)
-
-The scorer allows configurable weights to prioritize different optimization goals.
-"""
+"""Composite scoring across OSD, host, and pool dimensions using CV."""
 
 import math
 from dataclasses import dataclass, field
