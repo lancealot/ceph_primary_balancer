@@ -468,7 +468,7 @@ ceph osd pool get <pool_name> pg_num
 # Pool-focused (workload-specific balance)
 --weight-osd 0.2 --weight-host 0.2 --weight-pool 0.6
 
-# OSD-only (like MVP, ignore hosts and pools)
+# OSD-only (ignore hosts and pools)
 --weight-osd 1.0 --weight-host 0.0 --weight-pool 0.0
 ```
 

@@ -28,19 +28,19 @@ def generate_script(
     
     The generated script includes:
     - Safety confirmation prompt before execution
-    - Cluster health check (v1.0.0+) - verifies HEALTH_OK or HEALTH_WARN
-    - Batched execution with configurable batch sizes (v0.7.0+)
+    - Cluster health check - verifies HEALTH_OK or HEALTH_WARN
+    - Batched execution with configurable batch sizes
     - Progress tracking with formatted output per batch
     - Error handling and failure counting
     - Summary of successful and failed operations
-    - Offline mode warnings and manual verification (v1.5.0+)
-    
+    - Offline mode warnings and manual verification
+
     Args:
         swaps: List of SwapProposal objects containing primary reassignments
         output_path: Path where the script should be written
         batch_size: Number of commands to execute per batch (default: 50)
-        offline_mode: True if generated from offline export (adds warnings, v1.5.0)
-        export_metadata: Metadata from offline export (if offline_mode=True, v1.5.0)
+        offline_mode: True if generated from offline export (adds warnings)
+        export_metadata: Metadata from offline export (if offline_mode=True)
     
     Raises:
         SystemExit: Exits with code 1 if swaps list is empty or file write fails

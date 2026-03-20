@@ -53,7 +53,7 @@ python3 -m ceph_primary_balancer.cli --dry-run
 # Prioritize host balance
 python3 -m ceph_primary_balancer.cli --weight-osd 0.3 --weight-host 0.5 --weight-pool 0.2
 
-# OSD-only optimization (like MVP)
+# OSD-only optimization
 python3 -m ceph_primary_balancer.cli --weight-osd 1.0 --weight-host 0.0 --weight-pool 0.0
 ```
 
