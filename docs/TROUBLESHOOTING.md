@@ -1,8 +1,5 @@
 # Troubleshooting Guide
 
-**Version:** v0.4.0  
-**Last Updated:** 2026-02-03
-
 This guide covers common issues and solutions for the Ceph Primary PG Balancer.
 
 ---
@@ -242,8 +239,7 @@ python3 -m ceph_primary_balancer.cli --pool 3 --dry-run
 
 ---
 
-## JSON Export Issues (v0.4.0+)
-
+## JSON Export Issues
 ### "Error writing JSON output"
 
 **Cause:** Insufficient permissions, invalid path, or disk full.
@@ -292,7 +288,7 @@ python3 -m ceph_primary_balancer.cli \
 # Check schema version
 cat analysis.json | python3 -c "import json, sys; print(json.load(sys.stdin)['metadata']['schema_version'])"
 
-# Expected: "2.0" for v0.4.0
+# Expected: "2.0"
 
 # If schema mismatch, regenerate with current version
 python3 -m ceph_primary_balancer.cli \
@@ -301,8 +297,7 @@ python3 -m ceph_primary_balancer.cli \
 
 ---
 
-## Markdown Report Issues (v0.4.0+)
-
+## Markdown Report Issues
 ### "Report file not generated"
 
 **Cause:** Missing `--report-output` argument or permission issues.
@@ -402,30 +397,13 @@ python3 -m ceph_primary_balancer.cli \
 # Check version
 python3 -c "from ceph_primary_balancer import __version__; print(__version__)"
 
-# Should show 0.4.0 or higher
-
-# If older, pull latest code
-git pull origin main
-
 # Verify all modules exist
 ls -la src/ceph_primary_balancer/*.py
 ```
 
-**Expected modules for v0.4.0:**
-- `__init__.py`
-- `cli.py`
-- `models.py`
-- `collector.py`
-- `analyzer.py`
-- `optimizer.py`
-- `scorer.py`
-- `script_generator.py`
-- `exporter.py` (v0.4.0+)
-- `reporter.py` (v0.4.0+)
-
 ### "ModuleNotFoundError: No module named 'ceph_primary_balancer.reporter'"
 
-**Cause:** Missing Phase 3 modules (v0.3.0 or earlier).
+**Cause:** Incomplete installation or outdated code.
 
 **Solution:**
 ```bash
@@ -434,15 +412,11 @@ git pull
 
 # Verify reporter module exists
 ls -la src/ceph_primary_balancer/reporter.py
-
-# If missing, you're running v0.3.0 or earlier
-# Update to v0.4.0 for reporting features
 ```
 
 ---
 
-## Pool Filtering Issues (v0.3.0+)
-
+## Pool Filtering Issues
 ### "Pool not found"
 
 **Cause:** Invalid pool ID or pool was deleted.
@@ -475,8 +449,7 @@ ceph osd pool get <pool_name> pg_num
 
 ---
 
-## Weight Configuration Issues (v0.2.0+)
-
+## Weight Configuration Issues
 ### "Unexpected optimization results"
 
 **Cause:** Weight configuration doesn't match your optimization goals.

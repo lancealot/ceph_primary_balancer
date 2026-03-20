@@ -1,5 +1,5 @@
 """
-Integration tests for Phase 7.1 Dynamic Weight Optimization.
+Integration tests for dynamic weight optimization.
 
 Tests the complete dynamic weights feature including:
 1. CLI argument parsing and validation

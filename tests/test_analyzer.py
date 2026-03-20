@@ -316,7 +316,7 @@ class TestGetPoolStatisticsSummary(unittest.TestCase):
         self.assertAlmostEqual(summary[2].mean, 10.0)
     
     def test_get_pool_statistics_summary_no_pools(self):
-        """Test with no pools (Phase 1 scenario)."""
+        """Test with no pools defined."""
         osds = {
             0: OSDInfo(osd_id=0, primary_count=10)
         }

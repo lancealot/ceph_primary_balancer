@@ -1,5 +1,5 @@
 {
-  "_comment": "Example configuration for Phase 7.1 Dynamic Weight Optimization",
+  "_comment": "Example configuration for dynamic weight optimization",
   "_description": "This configuration enables dynamic weight adaptation for faster convergence and better balance",
   
   "optimization": {

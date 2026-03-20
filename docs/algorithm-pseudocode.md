@@ -383,10 +383,10 @@ every N iterations:
     threshold = max(2 * target_cv, 0.15)
 
     if effective_osd_cv <= threshold and host_cv <= threshold:
-        # Phase 2: pool-focused
+        # Pool-focused phase: OSD/host already converged
         weights = (0.10, 0.05, 0.85)
     else:
-        # Phase 1: proportional to distance from target
+        # Convergence phase: proportional to distance from target
         osd_dist  = max(0, effective_osd_cv - target_cv)
         host_dist = max(0, host_cv - target_cv)
         pool_dist = max(0, pool_cv - target_cv)

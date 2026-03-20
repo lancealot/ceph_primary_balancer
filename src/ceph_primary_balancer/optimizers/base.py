@@ -1,11 +1,8 @@
 """
 Base optimizer interface for Ceph Primary PG Balancer.
 
-This module defines the abstract base class that all optimization algorithms
-must implement, along with the registry for dynamic algorithm selection and
-statistics tracking.
-
-Phase 7: Advanced Optimization Algorithms Framework
+Defines the abstract base class for optimization algorithms, with
+scorer management, stats tracking, and termination checking.
 """
 
 from abc import ABC, abstractmethod
@@ -51,9 +48,8 @@ class OptimizerBase(ABC):
     - Statistics tracking
     - Termination checking
     - Progress reporting
-    
-    Phase 7.1 Integration: All optimizers automatically work with
-    DynamicScorer for adaptive weight optimization with zero extra code.
+
+    Supports DynamicScorer for adaptive weight optimization.
     """
     
     def __init__(
@@ -79,7 +75,7 @@ class OptimizerBase(ABC):
             scorer: Optional Scorer instance. If None, creates one based on parameters
             pool_filter: Optional pool_id to only optimize PGs from that pool
             enabled_levels: Optional list of enabled levels ['osd', 'host', 'pool']
-            dynamic_weights: Enable dynamic weight adaptation (Phase 7.1)
+            dynamic_weights: Enable dynamic weight adaptation
             dynamic_strategy: Weight strategy ('target_distance', 'two_phase')
             weight_update_interval: How often to recalculate weights (iterations)
             strategy_params: Optional parameters for weight strategy
@@ -114,7 +110,7 @@ class OptimizerBase(ABC):
             Scorer instance (either Scorer or DynamicScorer)
         """
         if self.dynamic_weights:
-            # Phase 7.1: Use DynamicScorer for adaptive weight optimization
+            # Use DynamicScorer for adaptive weight optimization
             from ..dynamic_scorer import DynamicScorer
             
             return DynamicScorer(
@@ -140,7 +136,7 @@ class OptimizerBase(ABC):
                 enabled_levels=self.enabled_levels
             )
         else:
-            # Default: all levels enabled with Phase 2 weights
+            # Default: all levels enabled with balanced weights
             return Scorer(w_osd=0.5, w_host=0.3, w_pool=0.2)
     
     @abstractmethod

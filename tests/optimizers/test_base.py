@@ -2,7 +2,7 @@
 Tests for base optimizer interface and registry.
 
 Tests the OptimizerBase abstract class and OptimizerStats
-to ensure the Phase 7 architecture is working correctly.
+to ensure the base optimizer interface works correctly.
 """
 
 import unittest

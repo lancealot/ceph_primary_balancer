@@ -42,7 +42,7 @@ cat ./rebalance.sh  # Review what will happen
 
 ## Advanced Options
 
-### Customize Optimization Weights (v0.2.0+)
+### Customize Optimization Weights
 
 Control how the optimizer balances across dimensions:
 
@@ -59,7 +59,7 @@ python3 -m ceph_primary_balancer.cli --weight-osd 1.0 --weight-host 0.0 --weight
 
 **Note:** Weights must sum to 1.0
 
-### Filter by Pool (v0.3.0+)
+### Filter by Pool
 
 Optimize only a specific pool:
 
@@ -85,7 +85,7 @@ python3 -m ceph_primary_balancer.cli --target-cv 0.15
 # Default is 10%
 ```
 
-### Limit Number of Changes (v0.5.0+)
+### Limit Number of Changes
 
 For production safety, limit the number of primary reassignments:
 
@@ -119,7 +119,7 @@ Recalculating proposed state with 50 swaps...
 Proposed state recalculated with 50 swaps
 ```
 
-### Batch Execution (v0.7.0+)
+### Batch Execution
 
 Control how commands are grouped in generated scripts:
 
@@ -163,7 +163,7 @@ Continue to next batch? [Y/n]
 
 ---
 
-## Offline Mode for Air-Gapped Environments (v1.5.0+)
+## Offline Mode for Air-Gapped Environments
 
 ### Overview
 
@@ -252,7 +252,7 @@ See [OFFLINE-MODE.md](OFFLINE-MODE.md) for comprehensive documentation including
 
 ---
 
-## Dynamic Weight Optimization (v1.3.0+)
+## Dynamic Weight Optimization
 
 ### Overview
 
@@ -419,7 +419,7 @@ python3 -m ceph_primary_balancer.cli \
 
 ---
 
-## Configuration Management (v1.0.0)
+## Configuration Management
 
 ### Using Configuration Files
 
@@ -570,7 +570,7 @@ See [config-examples/README.md](../config-examples/README.md) for detailed confi
 
 ---
 
-## Export & Reporting (v0.4.0+)
+## Export & Reporting
 
 ### JSON Export for Automation
 
@@ -700,9 +700,9 @@ Current Statistics:
 
 ---
 
-## Production Safety Features (v0.5.0-v0.7.0)
+## Production Safety Features
 
-### Automatic Rollback Scripts (v0.6.0+)
+### Automatic Rollback Scripts
 
 Every generated rebalancing script automatically includes a rollback script:
 
@@ -733,7 +733,7 @@ python3 -m ceph_primary_balancer.cli --output ./rebalance.sh
 - Client errors or connectivity issues
 - Need to return to previous state for troubleshooting
 
-### Cluster Health Checks (v0.5.0+)
+### Cluster Health Checks
 
 Generated scripts automatically include health verification:
 
@@ -753,7 +753,7 @@ fi
 - ⚠️ **HEALTH_WARN**: Proceeds with warning
 - ❌ **HEALTH_ERR**: Blocks execution (override option available)
 
-### Complete Production Workflow (v0.8.0)
+### Complete Production Workflow
 
 ```bash
 # 1. Analyze and generate with safety features

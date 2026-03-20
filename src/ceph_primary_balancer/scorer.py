@@ -87,10 +87,9 @@ class Scorer:
     dimensions. Lower scores indicate better balance. Weights control the
     relative importance of each dimension.
     
-    Phase 6.5: Supports configurable optimization levels to enable/disable
-    specific dimensions, allowing for performance optimization and targeted
-    balancing strategies.
-    
+    Supports configurable optimization levels to enable/disable specific
+    dimensions.
+
     Attributes:
         w_osd: Weight for OSD-level variance (default: 0.5)
         w_host: Weight for host-level variance (default: 0.3)
@@ -108,9 +107,9 @@ class Scorer:
         """
         Initialize the scorer with dimension weights and enabled levels.
         
-        Phase 2 defaults: 50% OSD, 30% Host, 20% Pool for balanced optimization.
-        Phase 6.5: Supports selective dimension enabling via enabled_levels.
-        
+        Defaults: 50% OSD, 30% Host, 20% Pool. Supports selective dimension
+        enabling via enabled_levels.
+
         Args:
             w_osd: Weight for OSD-level variance (0.0 to 1.0)
             w_host: Weight for host-level variance (0.0 to 1.0)
@@ -486,7 +485,7 @@ class Scorer:
             Dict mapping dimension name to Statistics object:
             - 'osd': OSD-level primary distribution statistics
             - 'host': Host-level primary distribution statistics
-            - 'pool': Pool-level statistics (Phase 2, empty for Phase 1)
+            - 'pool': Pool-level statistics (empty if no pools defined)
         """
         stats = {}
         

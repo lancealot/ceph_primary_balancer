@@ -26,8 +26,6 @@ Configuration values follow this precedence (highest to lowest):
 
 ## Available Configurations
 
-> **New in v1.2.0:** Configurable optimization levels allow you to enable/disable specific dimensions (OSD, HOST, POOL) for improved performance. See optimization strategy examples below.
-
 ### Standard Configurations
 
 #### balanced.json (Default Strategy - Full 3D)
@@ -97,7 +95,7 @@ Configuration values follow this precedence (highest to lowest):
 
 ---
 
-### Optimization Strategy Configurations (v1.2.0+)
+### Optimization Strategy Configurations
 
 These configurations demonstrate the new `enabled_levels` feature, allowing you to selectively optimize specific dimensions for improved performance.
 
@@ -169,7 +167,7 @@ These configurations demonstrate the new `enabled_levels` feature, allowing you 
     "target_cv": 0.10,          // Target coefficient of variation
     "max_changes": null,         // Maximum swaps (null = unlimited)
     "max_iterations": 10000,     // Maximum optimization iterations
-    "enabled_levels": ["osd", "host", "pool"]  // v1.2.0+: Dimensions to optimize
+    "enabled_levels": ["osd", "host", "pool"]  // Dimensions to optimize
   },
   "scoring": {
     "weights": {
@@ -206,7 +204,7 @@ optimization:
   target_cv: 0.10
   max_changes: null
   max_iterations: 10000
-  enabled_levels: ["osd", "host", "pool"]  # v1.2.0+: Dimensions to optimize
+  enabled_levels: ["osd", "host", "pool"]  # Dimensions to optimize
 
 scoring:
   weights:
@@ -261,7 +259,7 @@ verbosity:
 
 **Important:** Weights must always sum to 1.0.
 
-### Choosing Optimization Levels (v1.2.0+)
+### Choosing Optimization Levels
 
 The `enabled_levels` option allows you to selectively enable optimization dimensions:
 

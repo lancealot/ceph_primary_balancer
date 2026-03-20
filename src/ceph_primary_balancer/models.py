@@ -5,7 +5,7 @@ This module defines the core data structures used throughout the balancer:
 - PGInfo: Represents placement groups and their acting sets
 - OSDInfo: Tracks primary and total PG counts per OSD
 - HostInfo: Represents a host with aggregated OSD statistics
-- PoolInfo: Represents a pool with per-OSD primary distribution (Phase 2)
+- PoolInfo: Represents a pool with per-OSD primary distribution
 - ClusterState: Complete snapshot of cluster state
 - SwapProposal: Proposed primary reassignment operations
 - Statistics: Statistical metrics for primary distribution analysis

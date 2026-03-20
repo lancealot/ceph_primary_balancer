@@ -1,11 +1,6 @@
 # Benchmark Framework
 
-**Version:** v1.1.0 (Phase 5)  
-**Status:** Complete
-
-## Overview
-
-Comprehensive benchmarking framework for the Ceph Primary PG Balancer, providing performance validation, quality assessment, and regression detection.
+Performance validation, quality assessment, and regression detection for the optimizer.
 
 ## Quick Start
 
