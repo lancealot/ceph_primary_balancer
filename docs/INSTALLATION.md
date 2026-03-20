@@ -30,15 +30,7 @@ ceph pg dump pgs -f json | head
 git clone https://github.com/yourorg/ceph-primary-pg-balancer.git
 cd ceph-primary-pg-balancer
 
-# Install dependencies (Python stdlib only - no external packages)
-pip install -r requirements.txt
-```
-
-## Install via pip (Future - Not Yet Available)
-
-```bash
-# This will be available in a future release
-pip install ceph-primary-pg-balancer
+# No external dependencies required - uses Python standard library only
 ```
 
 ## Verify Installation
