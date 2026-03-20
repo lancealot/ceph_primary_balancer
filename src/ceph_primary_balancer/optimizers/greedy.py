@@ -438,13 +438,20 @@ class GreedyOptimizer(OptimizerBase):
         for pg in state.pgs.values():
             pool_pgs_cache.setdefault(pg.pool_id, []).append(pg)
 
+        # Components from the previous iteration's post-swap computation.
+        # Reused as the pre-swap components for the next iteration since
+        # state doesn't change between iterations.
+        prev_components = None
+
         # Main optimization loop
         for iteration in range(self.max_iterations):
+            # Compute components once per iteration — reuse previous
+            # iteration's post-swap components when available.
+            iter_components = prev_components or self.scorer.calculate_score_with_components(state)
+
             # Check termination conditions
-            if self._check_termination(state, iteration):
+            if self._check_termination(state, iteration, components=iter_components):
                 if self.verbose:
-                    primary_counts = [osd.primary_count for osd in state.osds.values()]
-                    stats = analyzer.calculate_statistics(primary_counts)
                     print(f"Target OSD-level CV {self.target_cv:.2%} achieved!")
                 break
 
@@ -454,12 +461,6 @@ class GreedyOptimizer(OptimizerBase):
 
             # Identify per-pool donors and receivers
             pool_donors, pool_receivers = analyzer.identify_pool_donors_receivers(state)
-
-            # Compute score components ONCE for the entire search phase.
-            # All search functions share this — state doesn't change until
-            # apply_swap, so components remain valid across all searches.
-            # This also prevents DynamicScorer from over-counting iterations.
-            iter_components = self.scorer.calculate_score_with_components(state)
 
             # Compute search state once (handles pool_filter)
             if self.pool_filter is not None:
@@ -574,14 +575,15 @@ class GreedyOptimizer(OptimizerBase):
             apply_swap(state, swap)
             swaps.append(swap)
 
-            # Compute post-swap components ONCE — used for both
-            # _record_iteration (score trajectory) and stagnation detection.
+            # Compute post-swap components ONCE — used for _record_iteration,
+            # stagnation detection, and reused as pre-swap components next iteration.
             stag_components = self.scorer.calculate_score_with_components(state)
+            prev_components = stag_components
 
             # Update statistics
             self.stats.swaps_evaluated += 1  # In greedy, evaluated = applied
             self.stats.swaps_applied += 1
-            self._record_iteration(state, score=stag_components.total)
+            self._record_iteration(stag_components.total, stag_components.osd_cv)
             stag_dim_cvs: Dict[str, float] = {}
             if 'osd' in self.scorer.enabled_levels:
                 stag_dim_cvs['osd'] = stag_components.osd_cv

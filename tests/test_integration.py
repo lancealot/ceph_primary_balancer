@@ -111,15 +111,6 @@ class TestIntegration(unittest.TestCase):
             primary_counts = [osd.primary_count for osd in state.osds.values()]
             initial_stats = analyzer.calculate_statistics(primary_counts)
             
-            print("\n" + "=" * 60)
-            print("INTEGRATION TEST: Mock Cluster Balancing")
-            print("=" * 60)
-            print(f"\nInitial Statistics:")
-            print(f"  Mean:    {initial_stats.mean:.1f} primaries/OSD")
-            print(f"  Std Dev: {initial_stats.std_dev:.2f}")
-            print(f"  CV:      {initial_stats.cv * 100:.1f}%")
-            print(f"  Range:   {initial_stats.min_val} - {initial_stats.max_val}")
-            
             # Verify initial imbalance exists
             self.assertGreater(initial_stats.cv, 0.10, 
                               "Initial CV should be > 10% to demonstrate imbalance")
@@ -128,21 +119,12 @@ class TestIntegration(unittest.TestCase):
             initial_variance = calculate_statistics([o.primary_count for o in state.osds.values()]).std_dev ** 2
             
             # Step 4: Run optimization
-            print(f"\nRunning optimization (target CV: 10%)...")
             swaps = GreedyOptimizer(target_cv=0.10, max_iterations=1000).optimize(state)
             
             # Step 5: Verify improvement
             final_counts = [osd.primary_count for osd in state.osds.values()]
             final_stats = analyzer.calculate_statistics(final_counts)
             final_variance = calculate_statistics([o.primary_count for o in state.osds.values()]).std_dev ** 2
-            
-            print(f"\nFinal Statistics:")
-            print(f"  Mean:    {final_stats.mean:.1f} primaries/OSD")
-            print(f"  Std Dev: {final_stats.std_dev:.2f}")
-            print(f"  CV:      {final_stats.cv * 100:.1f}%")
-            print(f"  Range:   {final_stats.min_val} - {final_stats.max_val}")
-            print(f"\nTotal swaps performed: {len(swaps)}")
-            print(f"Variance reduction: {initial_variance:.2f} → {final_variance:.2f}")
             
             # Verify improvement occurred
             self.assertLess(final_variance, initial_variance,
@@ -154,8 +136,6 @@ class TestIntegration(unittest.TestCase):
             self.assertGreater(len(swaps), 0, "Should have found at least one beneficial swap")
             
             # Step 6: Verify all swaps are valid
-            print(f"\nValidating {len(swaps)} swaps...")
-            
             # Reload original state to check swaps
             with patch.object(collector, 'run_ceph_command', side_effect=self.mock_run_ceph_command):
                 original_state = collector.build_cluster_state()
@@ -180,8 +160,6 @@ class TestIntegration(unittest.TestCase):
                 self.assertGreater(swap.score_improvement, 0,
                                  f"Swap {i}: Should have positive variance improvement")
             
-            print(f"✓ All {len(swaps)} swaps are valid")
-            
             # Step 7: Verify final state integrity
             # Check that total primaries equals total PGs
             total_primaries = sum(osd.primary_count for osd in state.osds.values())
@@ -195,10 +173,6 @@ class TestIntegration(unittest.TestCase):
                 self.assertEqual(pg.primary, pg.acting[0],
                                f"PG {pg.pgid} primary should be first in acting set")
             
-            print(f"✓ Final state integrity verified")
-            print("\n" + "=" * 60)
-            print("INTEGRATION TEST PASSED")
-            print("=" * 60)
 
 
 if __name__ == '__main__':

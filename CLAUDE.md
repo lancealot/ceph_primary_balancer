@@ -247,8 +247,6 @@ By optimizing each pool independently, Ceph's balancer can create conflicts wher
 - **`primary_affinity` is assumed to be 1.0 for all OSDs.** Ceph allows operators to set `primary_affinity` per OSD (0.0–1.0) to control which OSDs are preferred as primaries. Common uses: draining an OSD, deprioritizing slow hardware, or asymmetric workload roles. This tool does not read or respect `primary_affinity` — it will assign primaries to OSDs with `primary_affinity=0` if they appear in acting sets. Operators using non-default `primary_affinity` should review generated scripts before applying.
 
 ### Cleanup
-- **`_check_termination()` redundancy** — `base.py:_check_termination()` recalculates OSD/host/pool stats that are already available from the cached `ScoreComponents`. Should accept pre-computed components.
-- **`_record_iteration()` fallback** — `base.py:_record_iteration()` calls `calculate_score()` when no pre-computed score is passed. The greedy optimizer always passes a score, but the fallback path exists. Could be simplified.
 - **Remove `target_cv` plumbing** — `target_cv` defaults to 0.01, which is low enough that stagnation detection always terminates the optimizer before the CV target is reached. No realistic scenario benefits from a higher value. Hardcode 0.01 (or a module constant) and remove the flag from CLI args, config parsing, optimizer constructors, DynamicScorer, weight strategies, and benchmark infrastructure.
 - **Remove `docs/ceph-upstream-pr-outline.md`** — Planning document for an upstream Ceph contribution. Should be migrated to the ceph/ceph fork where the PR work will happen, then deleted from this repo.
 

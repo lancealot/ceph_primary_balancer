@@ -176,18 +176,34 @@ class OptimizerBase(ABC):
         """Stop the execution timer and record elapsed time."""
         self.stats.execution_time = time.time() - self._start_time
     
-    def _check_termination(self, state: ClusterState, iteration: int) -> bool:
+    def _check_termination(self, state: ClusterState, iteration: int, components=None) -> bool:
         """Check if optimization should terminate.
 
         Terminates when max iterations reached or ALL enabled dimensions
         have CV at or below target_cv.
-        """
-        from ..analyzer import calculate_statistics
 
+        Args:
+            state: Current cluster state (unused when components provided)
+            iteration: Current iteration number
+            components: Pre-computed ScoreComponents. When provided, CVs are
+                read directly instead of recalculating from state.
+        """
         if iteration >= self.max_iterations:
             return True
 
         enabled = self.scorer.enabled_levels
+
+        if components is not None:
+            if 'osd' in enabled and components.osd_cv > self.target_cv:
+                return False
+            if 'host' in enabled and components.host_cv > self.target_cv:
+                return False
+            if 'pool' in enabled and components.avg_pool_cv > self.target_cv:
+                return False
+            return True
+
+        # Fallback: compute from state (no pre-computed components available)
+        from ..analyzer import calculate_statistics
 
         if 'osd' in enabled:
             counts = [osd.primary_count for osd in state.osds.values()]
@@ -207,25 +223,15 @@ class OptimizerBase(ABC):
 
         return True
     
-    def _record_iteration(self, state: ClusterState, score=None):
-        """
-        Record statistics for current iteration.
+    def _record_iteration(self, score: float, osd_cv: float):
+        """Record statistics for current iteration.
 
         Args:
-            state: Current cluster state
-            score: Pre-computed score (avoids redundant scorer call)
+            score: Pre-computed composite score
+            osd_cv: Pre-computed OSD-level CV
         """
-        from ..analyzer import calculate_statistics
-
-        # Calculate current score and CV
-        if score is None:
-            score = self.scorer.calculate_score(state)
-        primary_counts = [osd.primary_count for osd in state.osds.values()]
-        stats = calculate_statistics(primary_counts)
-
-        # Record trajectories
         self.stats.score_trajectory.append(score)
-        self.stats.cv_trajectory.append(stats.cv)
+        self.stats.cv_trajectory.append(osd_cv)
         self.stats.iterations += 1
     
     def _print_progress(self, state: ClusterState, iteration: int, total_swaps: int):

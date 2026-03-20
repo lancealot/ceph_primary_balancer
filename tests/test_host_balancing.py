@@ -20,7 +20,6 @@ def test_host_info_creation():
     assert len(host.osd_ids) == 3
     assert host.primary_count == 150
     assert host.total_pg_count == 450
-    print("✓ HostInfo creation test passed")
 
 
 def test_osd_host_linkage():
@@ -30,7 +29,6 @@ def test_osd_host_linkage():
     assert osd.osd_id == 0
     assert osd.host == "host1"
     assert osd.primary_count == 50
-    print("✓ OSD-Host linkage test passed")
 
 
 def test_cluster_state_with_hosts():
@@ -62,7 +60,6 @@ def test_cluster_state_with_hosts():
     assert "host2" in state.hosts
     assert state.hosts["host1"].primary_count == 1
     assert state.hosts["host2"].primary_count == 1
-    print("✓ ClusterState with hosts test passed")
 
 
 def test_scorer_initialization():
@@ -77,7 +74,6 @@ def test_scorer_initialization():
     scorer2 = Scorer(w_osd=0.5, w_host=0.3, w_pool=0.0)
     assert abs(scorer2.w_osd + scorer2.w_host + scorer2.w_pool - 1.0) < 1e-9
     
-    print("✓ Scorer initialization test passed")
 
 
 def test_scorer_variance_calculation():
@@ -114,7 +110,6 @@ def test_scorer_variance_calculation():
     expected_score = 0.7 * (math.sqrt(osd_var) / osd_mean) + 0.3 * (math.sqrt(host_var) / host_mean)
     assert abs(score - expected_score) < 0.01, f"Score {score} != expected {expected_score}"
     
-    print("✓ Scorer variance calculation test passed")
 
 
 def test_host_count_updates_on_swap():
@@ -157,7 +152,6 @@ def test_host_count_updates_on_swap():
     # Verify PG acting set
     assert state.pgs["1.0"].primary == 2, "PG primary should be OSD 2"
     
-    print("✓ Host count updates on swap test passed")
 
 
 def test_multi_dimensional_scoring():
@@ -197,7 +191,6 @@ def test_multi_dimensional_scoring():
     # With OSDs perfectly balanced, score should come entirely from host CV
     assert score > 0.1, "Score should be significant due to host imbalance"
     
-    print("✓ Multi-dimensional scoring test passed")
 
 
 def test_swap_proposal_score_improvement():
@@ -210,28 +203,5 @@ def test_swap_proposal_score_improvement():
     )
     assert swap.score_improvement == 10.5
     
-    print("✓ SwapProposal backward compatibility test passed")
 
 
-def run_all_tests():
-    """Run all host balancing tests."""
-    print("\n" + "="*60)
-    print("Running Host-Level Balancing Tests")
-    print("="*60 + "\n")
-    
-    test_host_info_creation()
-    test_osd_host_linkage()
-    test_cluster_state_with_hosts()
-    test_scorer_initialization()
-    test_scorer_variance_calculation()
-    test_host_count_updates_on_swap()
-    test_multi_dimensional_scoring()
-    test_swap_proposal_backward_compatibility()
-    
-    print("\n" + "="*60)
-    print("All host balancing tests passed!")
-    print("="*60)
-
-
-if __name__ == "__main__":
-    run_all_tests()

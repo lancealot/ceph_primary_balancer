@@ -30,7 +30,9 @@ class DummyOptimizer(OptimizerBase):
     def optimize(self, state: ClusterState) -> List[SwapProposal]:
         """Simple dummy optimization that does nothing."""
         self._start_timer()
-        self._record_iteration(state)
+        score = self.scorer.calculate_score(state)
+        components = self.scorer.calculate_score_with_components(state)
+        self._record_iteration(score, components.osd_cv)
         self._stop_timer()
         return []
 
@@ -215,13 +217,14 @@ class TestOptimizerBaseHelpers(unittest.TestCase):
     def test_record_iteration(self):
         """Test iteration recording."""
         optimizer = DummyOptimizer()
-        
-        optimizer._record_iteration(self.state)
-        
+
+        optimizer._record_iteration(0.42, 0.15)
+
         self.assertEqual(optimizer.stats.iterations, 1)
         self.assertEqual(len(optimizer.stats.score_trajectory), 1)
         self.assertEqual(len(optimizer.stats.cv_trajectory), 1)
-        self.assertGreater(optimizer.stats.score_trajectory[0], 0)
+        self.assertAlmostEqual(optimizer.stats.score_trajectory[0], 0.42)
+        self.assertAlmostEqual(optimizer.stats.cv_trajectory[0], 0.15)
     
     def test_check_termination_max_iterations(self):
         """Test termination check for max iterations."""
