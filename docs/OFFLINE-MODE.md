@@ -358,11 +358,6 @@ python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
   --dynamic-strategy target_distance
 
-# With batch greedy algorithm
-python3 -m ceph_primary_balancer.cli \
-  --from-file export.tar.gz \
-  --output rebalance.sh \
-  --algorithm batch_greedy
 ```
 
 ### Export Age Warnings

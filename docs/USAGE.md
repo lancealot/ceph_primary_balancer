@@ -1,13 +1,6 @@
 # Usage Guide
 
-**Tool Version:** v1.0.0 🎉
 **Command:** `python3 -m ceph_primary_balancer.cli`
-
-> **🤖 AI-Generated Project:** This project was designed, implemented, and documented by Claude Sonnet 4.5, an AI assistant by Anthropic.
-
-> **📋 What's New in v1.0.0?** Production Release! Configuration file support, output directory organization, and verbosity control.
-
-> **📋 All Phase 4 Features Complete:** --max-changes, health checks, rollback scripts, batch execution, comprehensive unit tests (57 tests, 95%+ coverage), and configuration management.
 
 This guide covers common usage patterns for the Ceph Primary PG Balancer.
 
@@ -263,7 +256,7 @@ See [OFFLINE-MODE.md](OFFLINE-MODE.md) for comprehensive documentation including
 
 ### Overview
 
-Dynamic weight optimization (Phase 7.1) automatically adapts optimization weights during the rebalancing process based on current cluster state. This provides **15-25% faster convergence** and **6-8% better final balance** compared to fixed weights.
+Dynamic weight optimization automatically adapts optimization weights during the rebalancing process based on current cluster state.
 
 **Why use dynamic weights?**
 - Automatically focuses on dimensions that need the most attention
@@ -797,5 +790,3 @@ cat ./plan.md
 ## Troubleshooting
 
 For common issues and solutions, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
-
-For detailed technical information, see [technical-specification.md](technical-specification.md).

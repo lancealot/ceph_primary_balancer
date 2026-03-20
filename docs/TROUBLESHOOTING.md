@@ -577,10 +577,3 @@ python3 -m json.tool < analysis.json | less
 
 - [Installation Guide](INSTALLATION.md)
 - [Usage Guide](USAGE.md)
-- [Technical Specification](technical-specification.md)
-- [Development Guide](DEVELOPMENT.md)
-
----
-
-**Last Updated:** 2026-02-03  
-**Version:** v0.4.0
