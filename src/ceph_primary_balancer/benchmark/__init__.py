@@ -12,10 +12,9 @@ Components:
 - reporter: Results reporting
 - scenarios: Standard test scenarios
 
-Version: 1.1.0 (Phase 5)
 """
 
-__version__ = "1.1.0-dev"
+__version__ = "1.5.0"
 
 from .generator import (
     generate_synthetic_cluster,

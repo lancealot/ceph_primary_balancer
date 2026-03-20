@@ -1,7 +1,5 @@
 # Offline Mode for Air-Gapped Environments
 
-**Ceph Primary PG Balancer v1.5.0**
-
 This guide explains how to use the Ceph Primary PG Balancer in offline mode for air-gapped and security-restricted environments where direct cluster access is unavailable.
 
 ---
@@ -129,7 +127,7 @@ Archive cluster states over time for trend analysis and capacity planning.
 ### On Analysis System (Offline System)
 
 - Python 3.8 or higher
-- Ceph Primary PG Balancer v1.5.0+
+- Ceph Primary PG Balancer
 - No Ceph installation required
 - No cluster access required
 
@@ -358,11 +356,6 @@ python3 -m ceph_primary_balancer.cli \
   --dynamic-weights \
   --dynamic-strategy target_distance
 
-# With batch greedy algorithm
-python3 -m ceph_primary_balancer.cli \
-  --from-file export.tar.gz \
-  --output rebalance.sh \
-  --algorithm batch_greedy
 ```
 
 ### Export Age Warnings
@@ -658,7 +651,3 @@ done
 - [Configuration Guide](../config-examples/README.md)
 - [Troubleshooting](TROUBLESHOOTING.md)
 
----
-
-**Version:** 1.5.0  
-**Last Updated:** 2026-02-11

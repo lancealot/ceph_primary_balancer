@@ -1,5 +1,5 @@
 """
-Tests for Phase 6.5: Configurable Optimization Levels
+Tests for configurable optimization levels.
 
 Tests the ability to enable/disable specific optimization dimensions
 (OSD, HOST, POOL) to provide performance optimization and targeted

@@ -5,8 +5,6 @@ This module provides the DynamicScorer class that extends the base Scorer
 to automatically adjust weights based on the current cluster state. The weights
 are updated periodically during optimization to focus effort on the dimensions
 that need it most.
-
-Phase 7.1: Dynamic Weight Optimization
 """
 
 from typing import Dict, List, Tuple, Optional, Any

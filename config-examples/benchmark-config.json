@@ -1,5 +1,5 @@
 {
-  "_comment": "Example benchmark configuration for Ceph Primary PG Balancer v1.1.0",
+  "_comment": "Example benchmark configuration for Ceph Primary PG Balancer",
   "benchmark": {
     "target_cv": 0.10,
     "seed": 42,

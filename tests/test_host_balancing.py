@@ -214,9 +214,9 @@ def test_swap_proposal_score_improvement():
 
 
 def run_all_tests():
-    """Run all Phase 1 host balancing tests."""
+    """Run all host balancing tests."""
     print("\n" + "="*60)
-    print("Running Phase 1: Host-Level Balancing Tests")
+    print("Running Host-Level Balancing Tests")
     print("="*60 + "\n")
     
     test_host_info_creation()
@@ -229,7 +229,7 @@ def run_all_tests():
     test_swap_proposal_backward_compatibility()
     
     print("\n" + "="*60)
-    print("All Phase 1 tests passed! ✓")
+    print("All host balancing tests passed!")
     print("="*60)
 
 

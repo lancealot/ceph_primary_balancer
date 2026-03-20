@@ -49,7 +49,7 @@ def apply_swap(state: ClusterState, swap: SwapProposal):
         if new_osd.host and new_osd.host in state.hosts:
             state.hosts[new_osd.host].primary_count += 1
     
-    # Update pool-level counts (Phase 2)
+    # Update pool-level counts
     if state.pools:
         pool_id = pg.pool_id
         if pool_id in state.pools:
@@ -351,12 +351,6 @@ class GreedyOptimizer(OptimizerBase):
     - Fast: Typically converges in 500-1000 iterations
     - Simple: Easy to understand and debug
     - Proven: Battle-tested in production
-    
-    Phase 7 Update: Refactored to use OptimizerBase architecture while
-    maintaining 100% backward compatibility.
-    
-    Phase 7.1 Integration: Automatically works with DynamicScorer for
-    adaptive weight optimization with no additional code.
     """
     
     @property

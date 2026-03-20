@@ -69,13 +69,12 @@ class TargetDistanceWeightStrategy:
 
 
 class TwoPhaseWeightStrategy:
-    """Two-phase strategy: target_distance in phase 1, hard switch to
+    """Two-phase strategy: target_distance initially, hard switch to
     pool-focused weights once OSD and host converge.
 
-    Phase 2 kicks in when OSD and host CV both drop below threshold
-    (default: max(2 * target_cv, 0.15)).  The hard switch is the key
-    difference from pure target_distance: it stops OSD/host from
-    stealing iteration budget once they're "good enough".
+    The pool-focused phase kicks in when OSD and host CV both drop below
+    threshold (default: max(2 * target_cv, 0.15)).  The hard switch stops
+    OSD/host from stealing iteration budget once they're "good enough".
     """
 
     name = "two_phase"

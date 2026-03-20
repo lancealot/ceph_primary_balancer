@@ -1,14 +1,4 @@
-"""
-Test suite for Phase 3: Enhanced Reporting and JSON Export.
-
-Tests cover:
-- JSON export functionality and schema compliance
-- JSON round-trip integrity
-- Enhanced terminal reporting
-- Markdown report generation
-- Multi-format output
-- Reporter comparison tables
-"""
+"""Tests for JSON export and terminal/markdown reporting."""
 
 import json
 import os
@@ -429,7 +419,7 @@ class TestReporter(unittest.TestCase):
 
 
 class TestIntegration(unittest.TestCase):
-    """Integration tests for Phase 3 features."""
+    """Integration tests for export and reporting workflow."""
     
     def test_full_export_and_report_workflow(self):
         """Test complete workflow: export JSON and generate reports."""

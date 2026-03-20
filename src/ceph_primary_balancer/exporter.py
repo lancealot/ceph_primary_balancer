@@ -7,8 +7,6 @@ analysis results, and proposed changes to JSON format for:
 - External analysis tools
 - Historical tracking
 - Data persistence
-
-Phase 3 Feature: Complete JSON export with schema versioning.
 """
 
 import json

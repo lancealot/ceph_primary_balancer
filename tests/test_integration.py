@@ -62,7 +62,7 @@ class TestIntegration(unittest.TestCase):
         elif 'osd' in cmd and 'tree' in cmd:
             return self.osd_tree_data
         elif 'osd' in cmd and 'pool' in cmd and 'ls' in cmd:
-            # Mock pool data for Phase 2+ compatibility
+            # Mock pool data for pool-level compatibility
             # Extract pools from pg_dump data
             pools_seen = set()
             for pg_stat in self.pg_dump_data.get('pg_map', {}).get('pg_stats', []):

@@ -9,7 +9,6 @@ Tests cover:
 - Integration with base Scorer
 - Statistics generation
 
-Phase 7.1: Dynamic Weight Optimization
 """
 
 import pytest

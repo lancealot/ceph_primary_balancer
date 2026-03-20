@@ -1,6 +1,5 @@
 #!/bin/bash
 # Basic Dynamic Weight Optimization Example
-# Phase 7.1: Dynamic Weight Optimization
 #
 # This script demonstrates basic usage of dynamic weight optimization
 # for faster convergence and better balance.
